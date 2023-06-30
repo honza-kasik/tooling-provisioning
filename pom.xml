@@ -109,4 +109,19 @@
         </dependencies>
     </dependencyManagement>
 
+    <distributionManagement>
+        <snapshotRepository>
+            <id>jboss-qa-snapshots</id>
+            <uniqueVersion>false</uniqueVersion>
+            <name>JBoss QA snapshot repository</name>
+            <url>http://repository.engineering.redhat.com/nexus/content/repositories/jboss-qa-snapshots</url>
+        </snapshotRepository>
+        <repository>
+            <uniqueVersion>false</uniqueVersion>
+            <id>jboss-qa-releases</id>
+            <name>JBoss QA release repository</name>
+            <url>http://repository.engineering.redhat.com/nexus/content/repositories/jboss-qa-releases</url>
+        </repository>
+    </distributionManagement>
+
 </project>
