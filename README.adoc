@@ -1,0 +1,45 @@
+= Provisioning tooling
+
+> Set of tools to ease provisioning testing and prevent code redundancy across multiple testsuites.
+
+This started as a tooling for the `wildfly-maven-plugin` and later was used in several other testsuites. To make maintenance easier we now have this project.
+
+== tooling-process-execution
+
+Offers following abstractions:
+
+* `ObservableOutputStreamsProcess` abstraction over `commons-exec` to easily execute a command line and extract standard and error output.
+* `ServerProcess` abstraction over server process execution which allows to run client code at any point in log needed.
+
+Users of this module are encouraged to write their own command line abstractions over `org.apache.commons.exec.CommandLine` to use with `ObservableOutputStreamsProcess`.
+
+.`ObservableOutputStreamsProcess` example
+[,java]
+----
+new ObservableOutputStreamsProcess.Builder(new ProsperoCommandLine()
+        .addArgument(INSTALL)
+        .addArgument(DIR + targetServer)
+        .addArgument(PROFILE + "eap-8.0")
+        .addErrorOutputObserver(System.out::println)
+        .addProcessOutputObserver(System.out::println)
+        .build()
+        .invoke()
+----
+
+.`ServerProcess` use example with prepare management client
+[,java]
+----
+new ServerProcess(new ShCommandLine(eapPath.resolve(Paths.get("bin", "standalone.sh"))))
+        .runAfterServerStartedAndDestroyProcess(client -> {
+            new Administration(client).shutdown();
+        });
+----
+
+== tooling-maven-faker
+
+Contains utility allowing to produce and install "fake" artifacts to a local Maven repository. Anything related to smuggling impostors into a Maven lifecycle should be placed here.
+
+== tooling-channel-faker
+
+Anything related to fabricating channels and channel manifests have its place here.
+
