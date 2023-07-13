@@ -1,4 +1,4 @@
-package org.jboss.eap.qe;
+package org.jboss.eap.qe.tooling.mavenfaker;
 
 import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.io.FilenameUtils;

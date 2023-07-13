@@ -1,4 +1,4 @@
-package org.jboss.eap.qe.prospero.processexecution;
+package org.jboss.eap.qe.tooling.processexecution;
 
 /**
  * An interface describing process observer which has capability to access whole process, thus control it.
