@@ -12,7 +12,7 @@ import java.nio.file.Path;
 import java.util.regex.Pattern;
 
 /**
- * Tooling to create a "fake" channel
+ * Tooling to create a "fake" channel manifest
  */
 public class ChannelManifestFaker {
 

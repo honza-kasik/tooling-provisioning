@@ -4,7 +4,9 @@
 
 This started as a tooling for the `wildfly-maven-plugin` and later was used in several other testsuites. To make maintenance easier we now have this project.
 
-== Content
+== Modules available
+
+Released as standalone libraries. Note that individual modules can depend on each other.
 
 === tooling-process-execution
 
