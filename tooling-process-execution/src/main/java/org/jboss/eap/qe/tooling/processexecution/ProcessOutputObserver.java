@@ -1,4 +1,4 @@
-package org.jboss.eap.qe.prospero.processexecution;
+package org.jboss.eap.qe.tooling.processexecution;
 
 /**
  * Classes of this interface are able to handle output of processes.

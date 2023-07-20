@@ -4,7 +4,11 @@
 
 This started as a tooling for the `wildfly-maven-plugin` and later was used in several other testsuites. To make maintenance easier we now have this project.
 
-== tooling-process-execution
+== Modules available
+
+Released as standalone libraries. Note that individual modules can depend on each other.
+
+=== tooling-process-execution
 
 Offers following abstractions:
 
@@ -35,11 +39,21 @@ new ServerProcess(new ShCommandLine(eapPath.resolve(Paths.get("bin", "standalone
         });
 ----
 
-== tooling-maven-faker
+=== tooling-maven-faker
 
-Contains utility allowing to produce and install "fake" artifacts to a local Maven repository. Anything related to smuggling impostors into a Maven lifecycle should be placed here.
+Anything related to smuggling impostors into a Maven lifecycle should be placed here.
 
-== tooling-channel-faker
+* `MavenArtifactFaker` allows you to produce install a "fake" artifact into a Maven repository.
+
+=== tooling-channel-faker
 
 Anything related to fabricating channels and channel manifests have its place here.
+
+* `ChannelManifestFaker` will help you to generate fake channel manifest and install it into a local Maven repository with help of `tooling-maven-faker`
+
+* `ChannelManifestInspector` is a set of necessary boilerplate code to easily obtain crucial data from an existing channel manifest using `wildfly-channel` library
+
+== How to release
+
+1. Snapshot: `mvn clean deploy`
 

@@ -1,4 +1,4 @@
-package org.jboss.eap.qe.prospero.processexecution;
+package org.jboss.eap.qe.tooling.processexecution;
 
 /**
  * Exception denoting issues when running a runnable with an observed process

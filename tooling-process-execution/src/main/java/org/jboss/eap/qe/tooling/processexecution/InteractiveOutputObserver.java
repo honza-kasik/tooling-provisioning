@@ -1,4 +1,4 @@
-package org.jboss.eap.qe.prospero.processexecution;
+package org.jboss.eap.qe.tooling.processexecution;
 
 import java.io.OutputStream;
 

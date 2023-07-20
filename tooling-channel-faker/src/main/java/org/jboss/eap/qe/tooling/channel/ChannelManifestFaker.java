@@ -1,7 +1,7 @@
-package org.jboss.eap.qe.prospero.tooling.channel;
+package org.jboss.eap.qe.tooling.channel;
 
 import org.apache.commons.codec.digest.DigestUtils;
-import org.jboss.eap.qe.MavenArtifactFaker;
+import org.jboss.eap.qe.tooling.mavenfaker.MavenArtifactFaker;
 import org.wildfly.channel.ChannelManifest;
 import org.wildfly.channel.ChannelManifestMapper;
 import org.wildfly.channel.MavenCoordinate;
@@ -12,7 +12,7 @@ import java.nio.file.Path;
 import java.util.regex.Pattern;
 
 /**
- * Tooling to create a "fake" channel
+ * Tooling to create a "fake" channel manifest
  */
 public class ChannelManifestFaker {
 
