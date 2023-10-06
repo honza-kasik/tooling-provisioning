@@ -6,7 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * A boilerplate for making the shell script center of rotation, so we don§t have to specify binary each time.
+ * A boilerplate for making the shell script center of rotation, so we don't have to specify binary each time.
  * Be aware that EAP/WildFly starts child process from script. To successfully destroy child processes you need to
  * execute {@code process.toHandle().children().forEach(ProcessHandle::destroy)}.
  */

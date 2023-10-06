@@ -13,7 +13,7 @@ Released as standalone libraries. Note that individual modules can depend on eac
 Offers following abstractions:
 
 * `ObservableOutputStreamsProcess` abstraction over `commons-exec` to easily execute a command line and extract standard and error output.
-* `ServerProcess` abstraction over server process execution which allows to run client code at any point in log needed.
+* `ServerProcess` abstraction over server process execution which allows to run client code at any point in log needed and also on point when client connects to a server.
 
 Users of this module are encouraged to write their own command line abstractions over `org.apache.commons.exec.CommandLine` to use with `ObservableOutputStreamsProcess`.
 
@@ -48,6 +48,8 @@ Anything related to smuggling impostors into a Maven lifecycle should be placed 
 === tooling-channel-faker
 
 Anything related to fabricating channels and channel manifests have its place here.
+
+* `ChannelFaker` will help you to generate fake channel YAML
 
 * `ChannelManifestFaker` will help you to generate fake channel manifest and install it into a local Maven repository with help of `tooling-maven-faker`
 
