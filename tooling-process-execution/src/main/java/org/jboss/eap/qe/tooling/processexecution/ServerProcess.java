@@ -1,11 +1,21 @@
 package org.jboss.eap.qe.tooling.processexecution;
 
+import org.apache.commons.exec.CommandLine;
+import org.apache.commons.exec.ShutdownHookProcessDestroyer;
+import org.apache.commons.exec.launcher.CommandLauncherFactory;
 import org.wildfly.extras.creaper.core.ManagementClient;
 import org.wildfly.extras.creaper.core.online.OnlineManagementClient;
 import org.wildfly.extras.creaper.core.online.OnlineOptions;
 import org.wildfly.extras.creaper.core.online.operations.OperationException;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.util.LinkedHashMap;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Scanner;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -13,18 +23,20 @@ import java.util.concurrent.TimeUnit;
  */
 public class ServerProcess {
 
-    private final ShCommandLine startScript;
+    private final CommandLine startScript;
 
     private final long timeout;
     private final TimeUnit timeUnit;
 
+    private final OnlineOptions onlineOptions;
+
     /**
      * Create a new instance of server process. Instantiating won't create the server process. Default timeout of 5
      * minutes for the process is set. If you wish to have other timeout use
-     * {@link ServerProcess#ServerProcess(ShCommandLine, long, TimeUnit)}.
+     * {@link ServerProcess#ServerProcess(CommandLine, long, TimeUnit)}.
      * @param startScript start script command line
      */
-    public ServerProcess(final ShCommandLine startScript) {
+    public ServerProcess(final CommandLine startScript) {
         this(startScript, 5, TimeUnit.MINUTES);
     }
 
@@ -34,10 +46,26 @@ public class ServerProcess {
      * @param timeout the maximum time to wait
      * @param timeUnit the time unit of the timeout parameter
      */
-    public ServerProcess(final ShCommandLine startScript, long timeout, TimeUnit timeUnit) {
+    public ServerProcess(final CommandLine startScript, long timeout, TimeUnit timeUnit) {
+        this(startScript, timeout, timeUnit, OnlineOptions.standalone()
+                .hostAndPort("localhost", 9990)
+                .bootTimeout(30000) // timeouts are needed for use-case with restart
+                .connectionTimeout(30000)
+                .build());
+    }
+
+    /**
+     * Create a new instance of server process. Instantiating won't create the server process.
+     * @param startScript start script command line
+     * @param timeout the maximum time to wait
+     * @param timeUnit the time unit of the timeout parameter
+     * @param onlineOptions options for server settings
+     */
+    protected ServerProcess(final CommandLine startScript, long timeout, TimeUnit timeUnit, OnlineOptions onlineOptions) {
         this.startScript = startScript;
         this.timeout = timeout;
         this.timeUnit = timeUnit;
+        this.onlineOptions = onlineOptions;
     }
 
     /**
@@ -74,6 +102,8 @@ public class ServerProcess {
                     if (line.contains(lineMatch)) {
                         try (OnlineManagementClient client = ManagementClient.online(OnlineOptions.standalone()
                                 .hostAndPort("localhost", 9990)
+                                .bootTimeout(30000) // timeouts are needed for use-case with restart
+                                .connectionTimeout(30000)
                                 .build())) {
                             runnable.run(client);
                         } catch (IOException | OperationException | InterruptedException e) {
@@ -86,6 +116,67 @@ public class ServerProcess {
                 .withTimeout(this.timeout, this.timeUnit)
                 .build()
                 .invoke();
+    }
+
+    /**
+     * Start a server and run a runnable after the deployment was deployed and client connected.
+     *
+     * @param runnable a runnable which should be run when server started. Server will be destroyed after runnable
+     *                 completed.
+     */
+    public void runWhenClientConnectsAndDestroyProcess(final ServerRunnable runnable) throws IOException, InterruptedException {
+        ExecutorService executor = Executors.newFixedThreadPool(3);
+        Map<String, String> environment = new LinkedHashMap<>(System.getenv());
+        if (isWindows()) {
+            environment.put("NOPAUSE", "true");
+        }
+        final Process process = CommandLauncherFactory.createVMLauncher()
+                .exec(startScript, environment, null);
+
+        executor.execute(() -> observeStream(process.getInputStream()));
+        executor.execute(() -> observeStream(process.getErrorStream()));
+
+        executor.execute(() -> {
+                    try (OnlineManagementClient client = ManagementClient.online(onlineOptions)) {
+                        runnable.run(client);
+                    } catch (IOException | OperationException | InterruptedException e) {
+                        throw new ServerRunnableExecutionException(e);
+                    } finally {
+                        process.toHandle().children().forEach(ProcessHandle::destroy);
+                    }
+                }
+        );
+
+        new ShutdownHookProcessDestroyer().add(process);
+
+        try {
+            //wait for process termination
+            if (timeUnit != null) {
+                final boolean finishedBeforeTimeout = process.waitFor(this.timeout, this.timeUnit);
+                if (!finishedBeforeTimeout) {
+                    process.toHandle().children().forEach(ProcessHandle::destroyForcibly);
+                    process.destroyForcibly();
+                    throw new InterruptedException("Process was destroyed before timeout elapsed. Timeout is either " +
+                            "too low or we have an issue there. The process might hang waiting on input.");
+                }
+            } else {
+                process.waitFor();
+            }
+        } finally {
+            //streams likely ended by now - lets shutdown the executor
+            executor.shutdown();
+        }
+    }
+
+    private void observeStream(final InputStream inputStream) {
+        final Scanner scanner = new Scanner(inputStream);
+        while (scanner.hasNext()) {
+            scanner.next();
+        }
+    }
+
+    private boolean isWindows() {
+        return System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win");
     }
 
     @FunctionalInterface
