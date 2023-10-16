@@ -111,16 +111,16 @@
 
     <distributionManagement>
         <snapshotRepository>
-            <id>jboss-qa-snapshots</id>
+            <id>jboss-qa-snapshots-secure</id>
             <uniqueVersion>false</uniqueVersion>
             <name>JBoss QA snapshot repository</name>
-            <url>http://repository.engineering.redhat.com/nexus/content/repositories/jboss-qa-snapshots</url>
+            <url>https://repository-basic.engineering.redhat.com/nexus/content/repositories/jboss-qa-snapshots</url>
         </snapshotRepository>
         <repository>
             <uniqueVersion>false</uniqueVersion>
-            <id>jboss-qa-releases</id>
+            <id>jboss-qa-releases-secure</id>
             <name>JBoss QA release repository</name>
-            <url>http://repository.engineering.redhat.com/nexus/content/repositories/jboss-qa-releases</url>
+            <url>https://repository-basic.engineering.redhat.com/nexus/content/repositories/jboss-qa-releases</url>
         </repository>
     </distributionManagement>
 

@@ -1,4 +1,4 @@
-package org.jboss.eap.qe.prospero.tooling.channel;
+package org.jboss.eap.qe.tooling.channel;
 
 import org.wildfly.channel.MavenCoordinate;
 
