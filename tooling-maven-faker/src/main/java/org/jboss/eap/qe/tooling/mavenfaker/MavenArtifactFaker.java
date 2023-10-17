@@ -85,7 +85,7 @@ public class MavenArtifactFaker {
         writeSha1Sum(this.artifactPathInMavenRepo);
     }
 
-    private void writeSha1Sum(final Path artifactPathInMavenRepo) throws IOException {
+    public static void writeSha1Sum(final Path artifactPathInMavenRepo) throws IOException {
         Files.writeString(artifactPathInMavenRepo.getParent().resolve(artifactPathInMavenRepo.getFileName() + ".sha1"),
                 DigestUtils.sha1Hex(Files.readAllBytes(artifactPathInMavenRepo)));
     }

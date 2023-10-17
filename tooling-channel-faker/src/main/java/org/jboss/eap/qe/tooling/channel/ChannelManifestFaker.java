@@ -90,6 +90,13 @@ public class ChannelManifestFaker {
         }
 
         /**
+         * Create new instance of this builder
+         */
+        public Builder(String groupId, String artifactId, String version) {
+            this.coordinates = new MavenCoordinate(groupId, artifactId, version);
+        }
+
+        /**
          * Set channel manifest
          * @param channelManifest the channel manifest to install
          * @return instance of this builder
