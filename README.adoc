@@ -57,5 +57,17 @@ Anything related to fabricating channels and channel manifests have its place he
 
 == How to release
 
-1. Snapshot: `mvn clean deploy`
+Releases will be done to specific location according to settings in `pom.xml`  `distributionManagement` tag.
+
+=== Snapshot
+
+1. `mvn clean deploy`
+
+=== Release
+
+Please note that the prerequisite is to have read/write permission to the repo configured in `pom.xml` `scm` tag.
+
+1. `mvn release:clean`
+2. `mvn release:prepare`
+3. `mvn release:perform`
 
