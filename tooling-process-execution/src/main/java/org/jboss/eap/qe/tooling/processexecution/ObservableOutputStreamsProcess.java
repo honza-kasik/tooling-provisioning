@@ -126,6 +126,9 @@ public class ObservableOutputStreamsProcess {
         return System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win");
     }
 
+    /**
+     * Builder for ObservableOutputStreamsProcess
+     */
     public static final class Builder {
 
         private static final Logger logger = Logger.getLogger(ObservableOutputStreamsProcess.Builder.class.getSimpleName());
@@ -148,30 +151,66 @@ public class ObservableOutputStreamsProcess {
 
         private Pattern lineEndDelimiter;
 
+        /**
+         * Create builder for ObservableOutputStreamsProcess. Sets default timeout 5 minutes in which the process is
+         * expected to end.
+         * @param commandLine command line to be started as an observable process
+         */
         public Builder(final CommandLine commandLine) {
             this(commandLine, 5, TimeUnit.MINUTES);
         }
 
+        /**
+         * Creates builder for ObservableOutputStreamsProcess and allows to set custom timeout in which the process is
+         * expected to end.
+         * @param commandLine command line to be started as an observable process
+         * @param timeout timeout in which the process is expected to end
+         * @param timeUnit time unit for the timeout parameter
+         */
         public Builder(final CommandLine commandLine, final long timeout, final TimeUnit timeUnit) {
             this.commandLine = commandLine;
             withTimeout(timeout, timeUnit);
         }
 
+        /**
+         * Add observer to the stdout of the process. This observer will see each line printed in the stdout.
+         * @param observer an observer implementation
+         * @return instance of this builder
+         */
         public Builder addProcessOutputObserver(ProcessOutputObserver observer) {
             this.standardOutputObservers.add(observer);
             return this;
         }
 
+        /**
+         * Add observer to the stderr of the process. This observer will see each line printed in the stderr.
+         * @param observer an observer implementation
+         * @return instance of this builder
+         */
         public Builder addErrorOutputObserver(ProcessOutputObserver observer) {
             this.errorOutputObservers.add(observer);
             return this;
         }
 
+        /**
+         * Add interactive observer to process. This observer will see each line printed in the stdout and can act upon
+         * it according to its implementation.
+         * @see org.jboss.eap.qe.tooling.processexecution.InteractiveOutputObserver
+         * @param observer an observer implementation
+         * @return instance of this builder
+         */
         public Builder addInteractiveProcessOutputObserver(InteractiveOutputObserver observer) {
             this.interactiveOutputObservers.add(observer);
             return this;
         }
 
+        /**
+         * Add process control observer to process. This observer will see each line printed in the stdout and can act
+         * upon it according to its implementation.
+         * @see org.jboss.eap.qe.tooling.processexecution.ProcessControlObserver
+         * @param observer an observer implementation
+         * @return instance of this builder
+         */
         public Builder addProcessControlObserver(ProcessControlObserver observer) {
             this.processControlObservers.add(observer);
             return this;
@@ -220,6 +259,10 @@ public class ObservableOutputStreamsProcess {
             return this;
         }
 
+        /**
+         * Compose new instance of ObservableOutputStreamsProcess
+         * @return instance of ObservableOutputStreamsProcess
+         */
         public ObservableOutputStreamsProcess build() {
             logger.info("Command: " + this.commandLine);
             return new ObservableOutputStreamsProcess(this);
