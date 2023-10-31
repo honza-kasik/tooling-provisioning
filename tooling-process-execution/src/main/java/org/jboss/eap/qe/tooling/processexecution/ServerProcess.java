@@ -84,8 +84,8 @@ public class ServerProcess {
 
     /**
      * Start a server and run a runnable after the deployment was deployed. Completed deployment is detected by
-     * 'Deployed "<name>"' in the log. e.g. 12:07:31,023 INFO  [org.jboss.as.server] (management-handler-thread - 1)
-     * WFLYSRV0010: Deployed "fooqixbar" (runtime-name : "qux")
+     * {@code 'Deployed "<name>"' in the log. e.g. 12:07:31,023 INFO  [org.jboss.as.server] (management-handler-thread
+     * - 1) WFLYSRV0010: Deployed "fooqixbar" (runtime-name : "qux")}
      *
      * Please be aware that the timeout is set in constructor
      * @param deploymentName name of deployment which wil trigger runnable run.
@@ -179,6 +179,9 @@ public class ServerProcess {
         return System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win");
     }
 
+    /**
+     * Functional interface encapsulating method which code runs upon satisfaction of a condition
+     */
     @FunctionalInterface
     public interface ServerRunnable {
 
