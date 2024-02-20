@@ -8,9 +8,9 @@
     <packaging>pom</packaging>
 
     <scm>
-        <connection>scm:git:git@gitlab.hosts.mwqe.eng.bos.redhat.com:jbossqe-eap/tooling-provisioning.git</connection>
-        <url>scm:git:git@gitlab.hosts.mwqe.eng.bos.redhat.com:jbossqe-eap/tooling-provisioning.git</url>
-        <developerConnection>scm:git:git@gitlab.hosts.mwqe.eng.bos.redhat.com:jbossqe-eap/tooling-provisioning.git</developerConnection>
+        <connection>scm:git:git@gitlab.cee.redhat.com:jbossqe-eap/tooling-provisioning.git</connection>
+        <url>scm:git:git@gitlab.cee.redhat.com:jbossqe-eap/tooling-provisioning.git</url>
+        <developerConnection>scm:git:git@gitlab.cee.redhat.com:jbossqe-eap/tooling-provisioning.git</developerConnection>
       <tag>HEAD</tag>
   </scm>
 
