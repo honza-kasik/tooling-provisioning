@@ -25,6 +25,12 @@ public class ChannelManifestInspector {
 
     public ChannelManifestInspector(final String channelManifestGroupId, final String channelManifestArtifactId,
                                     final Path mavenRepositoryPath) {
+        if (channelManifestArtifactId == null || channelManifestArtifactId.isBlank()) {
+            throw new IllegalArgumentException("Channel manifest artifact ID must be set!");
+        }
+        if (channelManifestGroupId == null || channelManifestGroupId.isBlank()) {
+            throw new IllegalArgumentException("Channel manifest group ID must be set!");
+        }
         this.channelManifestGroupId = channelManifestGroupId;
         this.channelManifestArtifactId = channelManifestArtifactId;
         this.mavenRepositoryPath = mavenRepositoryPath;
