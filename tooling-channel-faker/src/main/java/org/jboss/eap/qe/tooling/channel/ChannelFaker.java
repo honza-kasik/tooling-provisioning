@@ -70,7 +70,7 @@ public class ChannelFaker {
                 "    groupId: \"" + fakeChannelMavenCoord.getGroupId() + "\"\n" +
                 "    artifactId: \"" + fakeChannelMavenCoord.getArtifactId() + "\"\n" +
                 (composeManifestVersion ? "    version: \"" + fakeChannelMavenCoord.getVersion() + "\"\n" : "") +
-                "noStreamStrategy: \"none\"\n";
+                "resolve-if-no-stream: \"none\"\n";
     }
 
     /**
@@ -100,7 +100,7 @@ public class ChannelFaker {
         private MavenCoordinate fakeChannelMavenCoord;
         private String fakeChannelName;
         private String fakeChannelRepoName;
-        private URI repoUri;
+        private final URI repoUri;
 
 
         /**
