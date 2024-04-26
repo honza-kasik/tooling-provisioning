@@ -68,7 +68,7 @@ public class ChannelManifestInspector {
                     .collect(Collectors.toList());
             if (yamlPaths.size() > 1) {
                 throw new IllegalStateException("There are multiple YAML artifacts of same group ID and artifact ID. This was " +
-                        "not accounted for. Aborting...");
+                        "not accounted for. Aborting... All YAML artifacts found: \n  " + yamlPaths.stream().map(Path::toString).collect(Collectors.joining("  \n")));
             } else {
                 return ChannelManifestMapper.fromString(Files.readString(yamlPaths.get(0)));
             }
