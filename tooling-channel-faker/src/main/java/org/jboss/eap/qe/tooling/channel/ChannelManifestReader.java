@@ -1,0 +1,18 @@
+package org.jboss.eap.qe.tooling.channel;
+
+import org.wildfly.channel.ChannelManifest;
+import java.io.IOException;
+
+/**
+ * Reads a Channel Manifest
+ */
+public interface ChannelManifestReader {
+
+	/**
+	 * Reads a Channel Manifest in a {@link org.wildfly.channel.ChannelManifest} 
+	 *
+	 * @return {@link org.wildfly.channel.ChannelManifest}
+	 * @throws IOException in case it resolves multiple Channel Manifests
+	 */
+	ChannelManifest readChannelManifest() throws IOException;
+}
