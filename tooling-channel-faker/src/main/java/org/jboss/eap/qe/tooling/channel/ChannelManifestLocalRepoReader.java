@@ -1,0 +1,71 @@
+package org.jboss.eap.qe.tooling.channel;
+
+import org.wildfly.channel.ChannelManifest;
+import org.wildfly.channel.ChannelManifestMapper;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.List;
+import java.util.stream.Collectors;
+
+public class ChannelManifestLocalRepoReader implements ChannelManifestReader {
+
+	final String channelManifestGroupId;
+	final String channelManifestArtifactId;
+	final String channelManifestVersion;
+	final Path mavenRepositoryPath;
+
+	public ChannelManifestLocalRepoReader(
+			String channelManifestGroupId,
+			String channelManifestArtifactId,
+			String channelManifestVersion,
+			Path mavenRepositoryPath) {
+		this.channelManifestGroupId = channelManifestGroupId;
+		this.channelManifestArtifactId = channelManifestArtifactId;
+		this.channelManifestVersion = channelManifestVersion;
+		this.mavenRepositoryPath = mavenRepositoryPath;
+	}
+
+	public ChannelManifestLocalRepoReader(
+			String channelManifestGroupId,
+			String channelManifestArtifactId,
+			Path mavenRepositoryPath) {
+		this(channelManifestGroupId,
+                     channelManifestArtifactId,
+                     null,
+                     mavenRepositoryPath);
+	}
+
+	/**
+	 * Reads a Channel Manifest in a {@link org.wildfly.channel.ChannelManifest} from a local maven repository
+	 *
+	 * @return {@link org.wildfly.channel.ChannelManifest}
+	 * @throws IOException in case it resolves multiple Channel Manifests
+	 */
+	public ChannelManifest readChannelManifest() throws IOException {
+		final Path gaPath = channelManifestVersion == null ?
+				mavenRepositoryPath.resolve(groupIdToPath(channelManifestGroupId)).resolve(channelManifestArtifactId)
+				:
+				mavenRepositoryPath
+						.resolve(groupIdToPath(channelManifestGroupId))
+						.resolve(channelManifestArtifactId)
+						.resolve(channelManifestVersion);
+		try (java.util.stream.Stream<Path> visitedPaths = Files.walk(gaPath)) {
+			final List<Path> yamlPaths = visitedPaths
+					.filter(path -> path.toString().endsWith("yaml"))
+					.collect(Collectors.toList());
+			if (yamlPaths.size() > 1) {
+				throw new IllegalStateException("There are multiple YAML artifacts of same group ID and artifact ID. This was " +
+						"not accounted for. Aborting... All YAML artifacts found: \n  " + yamlPaths.stream().map(Path::toString).collect(Collectors.joining("  \n")));
+			} else {
+				return ChannelManifestMapper.fromString(Files.readString(yamlPaths.get(0)));
+			}
+		}
+	}
+
+	private Path groupIdToPath(final String groupId) {
+		return Paths.get(groupId.replace(".", "/"));
+	}
+}

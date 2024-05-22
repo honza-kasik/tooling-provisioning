@@ -1,16 +1,11 @@
 package org.jboss.eap.qe.tooling.channel;
 
 import org.wildfly.channel.ChannelManifest;
-import org.wildfly.channel.ChannelManifestMapper;
 import org.wildfly.channel.Stream;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 /**
  * Utility class gathering boilerplate code to inspect channel manifest
@@ -59,31 +54,13 @@ public class ChannelManifestInspector {
                 orElse(null);
     }
 
-    private ChannelManifest readChannelManifest(final String channelManifestGroupId, final String channelManifestArtifactId,
-                                                final Path mavenRepositoryPath) throws IOException {
-        final Path gaPath = mavenRepositoryPath.resolve(groupIdToPath(channelManifestGroupId)).resolve(channelManifestArtifactId);
-        try (java.util.stream.Stream<Path> visitedPaths = Files.walk(gaPath)) {
-            final List<Path> yamlPaths = visitedPaths
-                    .filter(path -> path.toString().endsWith("yaml"))
-                    .collect(Collectors.toList());
-            if (yamlPaths.size() > 1) {
-                throw new IllegalStateException("There are multiple YAML artifacts of same group ID and artifact ID. This was " +
-                        "not accounted for. Aborting... All YAML artifacts found: \n  " + yamlPaths.stream().map(Path::toString).collect(Collectors.joining("  \n")));
-            } else {
-                return ChannelManifestMapper.fromString(Files.readString(yamlPaths.get(0)));
-            }
-        }
-    }
-
     private ChannelManifest getChannelManifest() throws IOException {
         if (this.channelManifest == null) {
-            this.channelManifest = readChannelManifest(this.channelManifestGroupId, this.channelManifestArtifactId, this.mavenRepositoryPath);
+            ChannelManifestLocalRepoReader channelManifestLocalRepoReader = new ChannelManifestLocalRepoReader(
+                    this.channelManifestGroupId, this.channelManifestArtifactId, this.mavenRepositoryPath
+            );
+            this.channelManifest = channelManifestLocalRepoReader.readChannelManifest();
         }
         return this.channelManifest;
     }
-
-    private Path groupIdToPath(final String groupId) {
-        return Paths.get(groupId.replace(".", "/"));
-    }
-
 }
