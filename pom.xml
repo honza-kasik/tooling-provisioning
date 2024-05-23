@@ -4,7 +4,7 @@
 
     <groupId>org.jboss.eap.qe</groupId>
     <artifactId>tooling-provisioning</artifactId>
-    <version>1.0.4-SNAPSHOT</version>
+    <version>1.0.3-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <scm>
