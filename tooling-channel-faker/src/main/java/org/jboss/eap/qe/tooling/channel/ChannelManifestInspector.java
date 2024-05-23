@@ -18,6 +18,12 @@ public class ChannelManifestInspector {
 
     private ChannelManifest channelManifest;
 
+    /**
+     * Constructor for ChannelManifestInspector
+     * @param channelManifestGroupId GroupId
+     * @param channelManifestArtifactId ArtifactId
+     * @param mavenRepositoryPath Path to channel manifest in the local filesystem
+     */
     public ChannelManifestInspector(final String channelManifestGroupId, final String channelManifestArtifactId,
                                     final Path mavenRepositoryPath) {
         if (channelManifestArtifactId == null || channelManifestArtifactId.isBlank()) {
@@ -36,6 +42,7 @@ public class ChannelManifestInspector {
      * @param groupId group ID of stream
      * @param artifactId artifact ID of stream
      * @return stream version or null if stream is not found in the channel manifest
+     * @throws IOException when channel manifest doesn't exist
      */
     public String inspectStreamVersion(final String groupId, final String artifactId) throws IOException {
         final Optional<org.wildfly.channel.Stream> streamOptional = getChannelManifest().findStreamFor(groupId, artifactId);
@@ -46,6 +53,7 @@ public class ChannelManifestInspector {
      * Find a stream containing string
      * @param string a string which will be matched in the stream artifact ID or group ID
      * @return a stream or null if not found
+     * @throws IOException when channel manifest doesn't exist
      */
     public Stream findStreamContaining(final String string) throws IOException {
         return getChannelManifest().getStreams().stream()
@@ -54,6 +62,11 @@ public class ChannelManifestInspector {
                 orElse(null);
     }
 
+    /**
+     * Gets the {@link ChannelManifest}
+     * @return {@link ChannelManifest}
+     * @throws IOException
+     */
     private ChannelManifest getChannelManifest() throws IOException {
         if (this.channelManifest == null) {
             ChannelManifestLocalRepoReader channelManifestLocalRepoReader = new ChannelManifestLocalRepoReader(

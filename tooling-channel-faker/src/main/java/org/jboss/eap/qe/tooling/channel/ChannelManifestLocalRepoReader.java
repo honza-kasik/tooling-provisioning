@@ -10,6 +10,9 @@ import java.nio.file.Paths;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Utility for reading a channel manifest from a local maven repo
+ */
 public class ChannelManifestLocalRepoReader implements ChannelManifestReader {
 
 	final String channelManifestGroupId;
@@ -17,6 +20,13 @@ public class ChannelManifestLocalRepoReader implements ChannelManifestReader {
 	final String channelManifestVersion;
 	final Path mavenRepositoryPath;
 
+	/**
+	 * Create an instance of ChannelManifestLocalRepoReader
+	 * @param channelManifestGroupId GroupId
+	 * @param channelManifestArtifactId ArtifactId
+	 * @param channelManifestVersion version
+	 * @param mavenRepositoryPath Path to maven repo
+	 */
 	public ChannelManifestLocalRepoReader(
 			String channelManifestGroupId,
 			String channelManifestArtifactId,
@@ -28,6 +38,12 @@ public class ChannelManifestLocalRepoReader implements ChannelManifestReader {
 		this.mavenRepositoryPath = mavenRepositoryPath;
 	}
 
+	/**
+	 * Create an instance of ChannelManifestLocalRepoReader
+	 * @param channelManifestGroupId GroupId
+	 * @param channelManifestArtifactId ArtifactId
+	 * @param mavenRepositoryPath Path to maven repo
+	 */
 	public ChannelManifestLocalRepoReader(
 			String channelManifestGroupId,
 			String channelManifestArtifactId,

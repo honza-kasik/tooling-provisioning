@@ -11,12 +11,17 @@ public class SemanticVersionAssume implements VersionAssume {
 
     private final List<String> currentVersionTokenized;
 
+    /**
+     * Create an instance of SemanticVersionAssume
+     * @param currentVersion current version
+     */
     public SemanticVersionAssume(String currentVersion) {
         this.currentVersionTokenized = Arrays.asList(currentVersion.split("\\."));
     }
 
     /**
-     * @inheritDoc
+     * Find next version
+     * @return next version
      */
     @Override
     public String nextVersion() {
@@ -32,7 +37,8 @@ public class SemanticVersionAssume implements VersionAssume {
     }
 
     /**
-     * @inheritDoc
+     * Find previous version
+     * @return previous version
      */
     @Override
     public String previousVersion() {

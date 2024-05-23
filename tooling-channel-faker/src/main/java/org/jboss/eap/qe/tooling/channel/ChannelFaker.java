@@ -16,11 +16,24 @@ public class ChannelFaker {
 
     private final String fakeChannelRepoName;
     private final URI repoUri;
+    /**
+     * channel name
+      */
     public static final String DEFAULT_FAKE_CHANNEL_NAME = "my-fake-channel";
+    /**
+     * maven repo name
+     */
     public static final String DEFAULT_FAKE_CHANNEL_REPO_NAME = "local-repo";
+    /**
+     * maven coordinates
+     */
     public static final MavenCoordinate DEFAUL_FAKE_CHANNEL_MAVEN_COORD = new MavenCoordinate("org.jboss.qe.eap", "fake-channel", "1.0.0.Final");
 
-    public ChannelFaker(Builder builder) {
+    /**
+     * Constructor using {@link Builder}
+     * @param builder {@link Builder}
+     */
+    private ChannelFaker(Builder builder) {
         this.fakeChannelName = builder.fakeChannelName;
         this.fakeChannelRepoName = builder.fakeChannelRepoName;
         this.repoUri = builder.repoUri;
@@ -29,6 +42,7 @@ public class ChannelFaker {
 
     /**
      * Get maven coordinates of fake channel
+     * @return {@link MavenCoordinate}
      */
     public MavenCoordinate getFakeChannelMavenCoord() {
         return fakeChannelMavenCoord;
@@ -36,6 +50,7 @@ public class ChannelFaker {
 
     /**
      * Get name of fake channel
+     * @return name of fake channel
      */
     public String getFakeChannelName() {
         return fakeChannelName;
@@ -43,6 +58,7 @@ public class ChannelFaker {
 
     /**
      * Get channel repo name
+     * @return repo name
      */
     public String getFakeChannelRepoName() {
         return fakeChannelRepoName;
@@ -50,6 +66,7 @@ public class ChannelFaker {
 
     /**
      * Get channel repo URI
+     * @return repo URI
      */
     public URI getRepoUri() {
         return repoUri;
@@ -57,6 +74,9 @@ public class ChannelFaker {
 
     /**
      * Get yaml of fake channel
+     * @param composeManifestVersion manifest version
+     * @return yaml of fake channel
+     * @throws MalformedURLException when repo URI is malformed
      */
     public String composeChannelYaml(boolean composeManifestVersion) throws MalformedURLException {
         //TODO maybe use channel lib?
@@ -75,6 +95,9 @@ public class ChannelFaker {
 
     /**
      * Get prospero output of fake channel. Use different formatting for JBossCLI.
+     * @param composeManifestVersion amnifest version
+     * @return prospero output
+     * @throws MalformedURLException when repo URI is malformed
      */
     public String composeProsperoOutputChannel(boolean composeManifestVersion) throws MalformedURLException {
         return composeProsperoOutputChannel(composeManifestVersion, true);
@@ -82,6 +105,10 @@ public class ChannelFaker {
 
     /**
      * Get prospero output of fake channel. Use different formatting for JBossCLI.
+     * @param composeManifestVersion manifest version
+     * @param platformLineBreaks add line break
+     * @return prospero output
+     * @throws MalformedURLException when repo URI is malformed
      */
     public String composeProsperoOutputChannel(boolean composeManifestVersion, boolean platformLineBreaks) throws MalformedURLException {
         String output = "# " + fakeChannelName + "\n" +
@@ -92,10 +119,17 @@ public class ChannelFaker {
         return platformLineBreaks && isWindows() ? output.replace("\n", "\r\n") : output;
     }
 
+    /**
+     * Are we on Windows?
+     * @return true: we are on Windows
+     */
     private boolean isWindows() {
         return System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win");
     }
 
+    /**
+     * Builder
+     */
     public static final class Builder {
         private MavenCoordinate fakeChannelMavenCoord;
         private String fakeChannelName;
@@ -105,13 +139,15 @@ public class ChannelFaker {
 
         /**
          * Set repo URI in fake channel
+         * @param repoUri repo URI
          */
         public Builder(URI repoUri) {
             this.repoUri = repoUri;
         }
 
         /**
-         * Set repo URI in fake channel
+         * Set repo path in fake channel
+         * @param repoPath repo path
          */
         public Builder(Path repoPath) {
             this.repoUri = repoPath.toUri();
@@ -119,6 +155,8 @@ public class ChannelFaker {
 
         /**
          * Set channel manifest coordinates
+         * @param fakeChannelMavenCoord channel manifest coordinates
+         * @return {@link Builder}
          */
         public Builder fakeChannelMavenCoord(MavenCoordinate fakeChannelMavenCoord) {
             this.fakeChannelMavenCoord = fakeChannelMavenCoord;
@@ -127,6 +165,8 @@ public class ChannelFaker {
 
         /**
          * Set fake channel name
+         * @param fakeChannelName channel name
+         * @return {@link Builder}
          */
         public Builder fakeChannelName(String fakeChannelName) {
             this.fakeChannelName = fakeChannelName;
@@ -135,6 +175,8 @@ public class ChannelFaker {
 
         /**
          * Set repo name in fake channel
+         * @param fakeChannelRepoName repo name
+         * @return {@link Builder}
          */
         public Builder fakeChannelRepoName(String fakeChannelRepoName) {
             this.fakeChannelRepoName = fakeChannelRepoName;
@@ -143,6 +185,7 @@ public class ChannelFaker {
 
         /**
          * Build fake channel
+         * @return {@link ChannelFaker}
          */
         public ChannelFaker build() {
             if (fakeChannelMavenCoord == null) {
