@@ -35,8 +35,11 @@ public class ChannelManifestFaker {
             "  </versioning>\n" +
             "</metadata>\n";
 
-
-    public ChannelManifestFaker(Builder builder) {
+    /**
+     * Constructor using {@link ChannelFaker.Builder}
+     * @param builder {@link Builder}
+     */
+    private ChannelManifestFaker(Builder builder) {
         this.coordinates = builder.coordinates;
         this.channelManifest = builder.channelManifest;
         this.channelManifestYamlFile = builder.channelManifestYamlFile;
@@ -45,6 +48,8 @@ public class ChannelManifestFaker {
 
     /**
      * Installs complete fake manifest based on available data
+     * @return path to installed manifest
+     * @throws IOException when installation fails
      */
     public Path installFakeManifest() throws IOException {
         final MavenArtifactFaker mavenArtifactFaker = new MavenArtifactFaker.Builder()
@@ -73,6 +78,9 @@ public class ChannelManifestFaker {
         Files.writeString(artifactParentPath.resolve("maven-metadata.xml.sha1"), DigestUtils.sha1Hex(correctMetadata));
     }
 
+    /**
+     * Builder
+     */
     public static final class Builder {
 
         private final MavenCoordinate coordinates;
@@ -91,6 +99,9 @@ public class ChannelManifestFaker {
 
         /**
          * Create new instance of this builder
+         * @param groupId groupId
+         * @param artifactId artifactId
+         * @param version version
          */
         public Builder(String groupId, String artifactId, String version) {
             this.coordinates = new MavenCoordinate(groupId, artifactId, version);
@@ -126,6 +137,10 @@ public class ChannelManifestFaker {
             return this;
         }
 
+        /**
+         * Build the {@link ChannelManifestFaker}
+         * @return {@link ChannelManifestFaker}
+         */
         public ChannelManifestFaker build() {
             if ((channelManifestYamlFile == null) == (channelManifest == null)) {
                 throw new IllegalArgumentException("Either manifest or path to a YAML file must be set. Not both!");
