@@ -38,6 +38,7 @@ public class InvocationRequestBuilder {
 
     private String mavenRepoLocalPath;
     private Properties otherProperties;
+    @Deprecated
     private boolean useBrewRepo;
 
     private MavenCoordinates mavenPluginGav;
@@ -213,7 +214,9 @@ public class InvocationRequestBuilder {
      * This flag will be used by invoked Maven instance.
      * @param useBrewRepo sets the property that activates the {@code use-brew-repo} profile.
      * @return instance of this builder
+     * @deprecated Use {@link #setUserSettingsFile(String)} with proper settings instead to configure repository
      */
+    @Deprecated
     public InvocationRequestBuilder setUseBrewRepo(final boolean useBrewRepo) {
         this.useBrewRepo = useBrewRepo;
         return this;
