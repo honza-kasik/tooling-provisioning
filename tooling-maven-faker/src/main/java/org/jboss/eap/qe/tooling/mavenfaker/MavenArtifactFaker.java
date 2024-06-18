@@ -2,6 +2,11 @@ package org.jboss.eap.qe.tooling.mavenfaker;
 
 import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.io.FilenameUtils;
+import org.apache.maven.shared.invoker.DefaultInvocationRequest;
+import org.apache.maven.shared.invoker.DefaultInvoker;
+import org.apache.maven.shared.invoker.InvocationRequest;
+import org.apache.maven.shared.invoker.InvocationResult;
+import org.apache.maven.shared.invoker.MavenInvocationException;
 import org.jboss.shrinkwrap.api.Archive;
 import org.jboss.shrinkwrap.api.ShrinkWrap;
 import org.jboss.shrinkwrap.api.asset.StringAsset;
@@ -27,6 +32,8 @@ public class MavenArtifactFaker {
     private final String artifactId;
     private final String version;
     private final String mavenRepoLocal;
+    private final String packaging;
+    private final String classifier;
 
     private Path artifactPathInMavenRepo;
 
@@ -35,6 +42,8 @@ public class MavenArtifactFaker {
         this.artifactId = builder.artifactId;
         this.version = builder.version;
         this.mavenRepoLocal = builder.mavenRepoLocal;
+        this.packaging = builder.packaging;
+        this.classifier = builder.classifier;
     }
 
     /**
@@ -91,6 +100,37 @@ public class MavenArtifactFaker {
     }
 
     /**
+     * Install "real" fake artifact in local maven repository; uses supplied "artifact" as the "real"
+     * fake artifact.<br>
+     * It creates all files that the "deploy:deploy-file" goal would normally create (.md5, .sha1, .pom);
+     */
+    public void installRealFakeArtifactInLocalMavenRepo(File mavenHome, Path artifact) throws ArtifactInstallException, MavenInvocationException {
+        final InvocationRequest request = new DefaultInvocationRequest();
+        request.setBatchMode(true);
+        request.setMavenHome(mavenHome);
+        request.setLocalRepositoryDirectory(Paths.get(this.mavenRepoLocal).toFile());
+        request.setShowErrors(true);
+        request.addArg("deploy:deploy-file");
+        request.addArg("-Durl=file://" + Paths.get(this.mavenRepoLocal).toFile().getAbsolutePath());
+        request.addArg("-Dfile=" + artifact.toFile().getAbsolutePath());
+        request.addArg("-DgroupId=" + this.groupId);
+        request.addArg("-DartifactId=" + this.artifactId);
+        request.addArg("-Dversion=" + this.version);
+        request.addArg("-Dpackaging=" + this.packaging);
+        request.addArg("-Dclassifier=" + this.classifier);
+
+        DefaultInvoker invoker = new DefaultInvoker();
+        InvocationResult result = invoker.execute(request);
+        if (result.getExitCode() != 0) {
+            if (result.getExecutionException() != null) {
+                throw new ArtifactInstallException("Error installing artifact " + artifact.toFile().getAbsolutePath(), result.getExecutionException());
+            } else {
+                throw new ArtifactInstallException("Error installing artifact " + artifact.toFile().getAbsolutePath());
+            }
+        }
+    }
+
+    /**
      * Get path of artifact in local maven repository
      * @return path or null if artifact was not yet installed
      */
@@ -122,6 +162,8 @@ public class MavenArtifactFaker {
         private String artifactId;
         private String version;
         private String mavenRepoLocal;
+        private String packaging;
+        private String classifier;
 
         public Builder() {
         }
@@ -163,6 +205,26 @@ public class MavenArtifactFaker {
          */
         public Builder mavenRepoLocal(final String mavenRepoLocal) {
             this.mavenRepoLocal = mavenRepoLocal;
+            return this;
+        }
+
+        /**
+         * Set packaging
+         * @param packaging packaging
+         * @return instance of this builder
+         */
+        public Builder packaging(final String packaging) {
+            this.packaging = packaging;
+            return this;
+        }
+
+        /**
+         * Set classifier
+         * @param classifier classifier
+         * @return instance of this builder
+         */
+        public Builder classifier(final String classifier) {
+            this.classifier = classifier;
             return this;
         }
 
