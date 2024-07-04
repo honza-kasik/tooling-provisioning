@@ -76,15 +76,14 @@ public class ChannelFaker {
      * Get yaml of fake channel
      * @param composeManifestVersion manifest version
      * @return yaml of fake channel
-     * @throws MalformedURLException when repo URI is malformed
      */
-    public String composeChannelYaml(boolean composeManifestVersion) throws MalformedURLException {
+    public String composeChannelYaml(boolean composeManifestVersion) {
         //TODO maybe use channel lib?
         return "schemaVersion: \"2.0.0\"\n" +
                 "name: \"" + fakeChannelName + "\"\n" +
                 "repositories:\n" +
                 "  - id: \"" + fakeChannelRepoName + "\"\n" +
-                "    url: \"" + repoUri.toURL() + "\"\n" +
+                "    url: \"" + repoUri + "\"\n" +
                 "manifest:\n" +
                 "  maven:\n" +
                 "    groupId: \"" + fakeChannelMavenCoord.getGroupId() + "\"\n" +
