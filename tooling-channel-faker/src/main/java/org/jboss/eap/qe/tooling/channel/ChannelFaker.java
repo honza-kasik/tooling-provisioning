@@ -96,9 +96,8 @@ public class ChannelFaker {
      * Get prospero output of fake channel. Use different formatting for JBossCLI.
      * @param composeManifestVersion amnifest version
      * @return prospero output
-     * @throws MalformedURLException when repo URI is malformed
      */
-    public String composeProsperoOutputChannel(boolean composeManifestVersion) throws MalformedURLException {
+    public String composeProsperoOutputChannel(boolean composeManifestVersion) {
         return composeProsperoOutputChannel(composeManifestVersion, true);
     }
 
@@ -107,14 +106,13 @@ public class ChannelFaker {
      * @param composeManifestVersion manifest version
      * @param platformLineBreaks add line break
      * @return prospero output
-     * @throws MalformedURLException when repo URI is malformed
      */
-    public String composeProsperoOutputChannel(boolean composeManifestVersion, boolean platformLineBreaks) throws MalformedURLException {
+    public String composeProsperoOutputChannel(boolean composeManifestVersion, boolean platformLineBreaks) {
         String output = "# " + fakeChannelName + "\n" +
                 "  manifest: " + fakeChannelMavenCoord.getGroupId() + ":" + fakeChannelMavenCoord.getArtifactId() + (composeManifestVersion ? ":" + fakeChannelMavenCoord.getVersion() : "") + "\n" +
                 "  repositories:\n" +
                 "    id: " + fakeChannelRepoName + "\n" +
-                "    url: " + repoUri.toURL() + "\n";
+                "    url: " + repoUri + "\n";
         return platformLineBreaks && isWindows() ? output.replace("\n", "\r\n") : output;
     }
 
