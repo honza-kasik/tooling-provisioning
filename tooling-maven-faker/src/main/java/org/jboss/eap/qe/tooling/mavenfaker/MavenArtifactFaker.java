@@ -104,7 +104,7 @@ public class MavenArtifactFaker {
      * fake artifact.<br>
      * It creates all files that the "deploy:deploy-file" goal would normally create (.md5, .sha1, .pom);
      */
-    public void installRealFakeArtifactInLocalMavenRepo(File mavenHome, Path artifact) throws ArtifactInstallException, MavenInvocationException {
+    public void installRealFakeArtifactInLocalMavenRepo(File mavenHome, Path artifact) throws ArtifactInstallException {
         final InvocationRequest request = new DefaultInvocationRequest();
         request.setBatchMode(true);
         request.setMavenHome(mavenHome);
@@ -120,7 +120,14 @@ public class MavenArtifactFaker {
         request.addArg("-Dclassifier=" + this.classifier);
 
         DefaultInvoker invoker = new DefaultInvoker();
-        InvocationResult result = invoker.execute(request);
+        InvocationResult result = null;
+
+        try {
+            result = invoker.execute(request);
+        } catch (MavenInvocationException e) {
+            throw new ArtifactInstallException(e);
+        }
+
         if (result.getExitCode() != 0) {
             if (result.getExecutionException() != null) {
                 throw new ArtifactInstallException("Error installing artifact " + artifact.toFile().getAbsolutePath(), result.getExecutionException());
