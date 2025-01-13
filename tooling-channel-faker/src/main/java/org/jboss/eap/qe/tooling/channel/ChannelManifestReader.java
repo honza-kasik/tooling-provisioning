@@ -14,5 +14,5 @@ public interface ChannelManifestReader {
 	 * @return {@link org.wildfly.channel.ChannelManifest}
 	 * @throws IOException in case it resolves multiple Channel Manifests
 	 */
-	ChannelManifest readChannelManifest() throws IOException;
+	ChannelManifest readChannelManifest(final String groupId, final String artifactId) throws IOException;
 }

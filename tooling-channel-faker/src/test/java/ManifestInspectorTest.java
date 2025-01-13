@@ -1,4 +1,5 @@
 import org.jboss.eap.qe.tooling.channel.ChannelManifestInspector;
+import org.jboss.eap.qe.tooling.channel.ChannelManifestLocalRepoReader;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullSource;
@@ -41,5 +42,10 @@ public class ManifestInspectorTest {
     @Test
     public void testInstantiationValidValues() {
         new ChannelManifestInspector("some.valid.id", "artifact-id", Path.of("some-path"));
+    }
+
+    @Test
+    public void testInstantiationWithReader() {
+        new ChannelManifestInspector("some.valid.id", "artifactid", new ChannelManifestLocalRepoReader(Path.of("some-path")));
     }
 }
