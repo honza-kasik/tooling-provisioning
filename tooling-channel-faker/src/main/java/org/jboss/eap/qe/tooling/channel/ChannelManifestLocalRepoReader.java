@@ -15,43 +15,28 @@ import java.util.stream.Collectors;
  */
 public class ChannelManifestLocalRepoReader implements ChannelManifestReader {
 
-	final String channelManifestGroupId;
-	final String channelManifestArtifactId;
 	final String channelManifestVersion;
 	final Path mavenRepositoryPath;
 
 	/**
 	 * Create an instance of ChannelManifestLocalRepoReader
-	 * @param channelManifestGroupId GroupId
-	 * @param channelManifestArtifactId ArtifactId
 	 * @param channelManifestVersion version
 	 * @param mavenRepositoryPath Path to maven repo
 	 */
 	public ChannelManifestLocalRepoReader(
-			String channelManifestGroupId,
-			String channelManifestArtifactId,
 			String channelManifestVersion,
 			Path mavenRepositoryPath) {
-		this.channelManifestGroupId = channelManifestGroupId;
-		this.channelManifestArtifactId = channelManifestArtifactId;
 		this.channelManifestVersion = channelManifestVersion;
 		this.mavenRepositoryPath = mavenRepositoryPath;
 	}
 
 	/**
 	 * Create an instance of ChannelManifestLocalRepoReader
-	 * @param channelManifestGroupId GroupId
-	 * @param channelManifestArtifactId ArtifactId
 	 * @param mavenRepositoryPath Path to maven repo
 	 */
 	public ChannelManifestLocalRepoReader(
-			String channelManifestGroupId,
-			String channelManifestArtifactId,
 			Path mavenRepositoryPath) {
-		this(channelManifestGroupId,
-                     channelManifestArtifactId,
-                     null,
-                     mavenRepositoryPath);
+		this(null, mavenRepositoryPath);
 	}
 
 	/**
@@ -60,7 +45,19 @@ public class ChannelManifestLocalRepoReader implements ChannelManifestReader {
 	 * @return {@link org.wildfly.channel.ChannelManifest}
 	 * @throws IOException in case it resolves multiple Channel Manifests
 	 */
-	public ChannelManifest readChannelManifest() throws IOException {
+	public ChannelManifest readChannelManifest(final String channelManifestGroupId, final String channelManifestArtifactId) throws IOException {
+		return readChannelManifest(channelManifestGroupId, channelManifestArtifactId, null);
+	}
+
+	/**
+	 * Reads a Channel Manifest in a {@link org.wildfly.channel.ChannelManifest} from a local maven repository
+	 *
+	 * @return {@link org.wildfly.channel.ChannelManifest}
+	 * @throws IOException in case it resolves multiple Channel Manifests
+	 */
+	public ChannelManifest readChannelManifest(final String channelManifestGroupId,
+											   final String channelManifestArtifactId,
+											   final String channelManifestVersion) throws IOException {
 		final Path gaPath = channelManifestVersion == null ?
 				mavenRepositoryPath.resolve(groupIdToPath(channelManifestGroupId)).resolve(channelManifestArtifactId)
 				:
@@ -80,6 +77,7 @@ public class ChannelManifestLocalRepoReader implements ChannelManifestReader {
 			}
 		}
 	}
+
 
 	private Path groupIdToPath(final String groupId) {
 		return Paths.get(groupId.replace(".", "/"));

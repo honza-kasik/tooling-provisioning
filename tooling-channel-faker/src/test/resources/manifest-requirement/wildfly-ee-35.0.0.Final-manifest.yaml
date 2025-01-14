@@ -1,0 +1,10 @@
+---
+schemaVersion: "1.1.0"
+name: "WildFly EE manifest version 35.0.0.Final"
+id: "org.wildfly.channels:wildfly-ee"
+description: "Manifest for WildFly EE feature pack."
+streams:
+  - groupId: "com.carrotsearch"
+    artifactId: "hppc"
+    version: "0.10.0"
+logicalVersion: "WildFly EE 35.0.0.Final"
