@@ -6,10 +6,8 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
-import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,7 +24,7 @@ public class ManifestInspectorRecursiveTest {
     @BeforeAll
     public static void setupManifestRepository() throws IOException, InterruptedException, URISyntaxException, ArtifactInstallException {
         tempRepo = Files.createTempDirectory("recursive-repo-test");
-        final File mvnBinary = findMvnBinary();
+        final File mvnBinary = MavenTestUtils.findMvnBinary();
 
         //install main manifest
         new MavenArtifactFaker.Builder()
@@ -70,20 +68,4 @@ public class ManifestInspectorRecursiveTest {
                 .inspectStreamVersion("com.carrotsearch", "hppc", false);
         Assertions.assertNull(version);
     }
-
-    private static File findMvnBinary() throws IOException, InterruptedException {
-        String command = System.getProperty("os.name").toLowerCase().contains("win") ? "where mvn" : "which mvn";
-        Process process = Runtime.getRuntime().exec(command);
-
-        BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-        String mvnPath = reader.readLine();
-        process.waitFor();
-
-        if (mvnPath != null && !mvnPath.isEmpty()) {
-            return new File(mvnPath);
-        } else {
-            return null;
-        }
-    }
-
 }
