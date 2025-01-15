@@ -21,6 +21,7 @@
         <module>tooling-process-execution</module>
         <module>tooling-resource-utils</module>
         <module>tooling-string-utils</module>
+        <module>tooling-feature-pack</module>
     </modules>
 
     <properties>
@@ -49,6 +50,7 @@
         <version.plexus-utils>4.0.1</version.plexus-utils>
         <version.surefire>3.0.0-M6</version.surefire>
         <version.junit>5.8.1</version.junit>
+        <version.org.jboss.galleon>5.2.0.Final</version.org.jboss.galleon>
     </properties>
 
     <dependencyManagement>
@@ -165,6 +167,17 @@
                 <artifactId>junit-jupiter-params</artifactId>
                 <version>${version.junit}</version>
                 <scope>test</scope>
+            </dependency>
+            <!--galleon-core for feature pack builder-->
+            <dependency>
+                <groupId>org.jboss.galleon</groupId>
+                <artifactId>galleon-core</artifactId>
+                <version>${version.org.jboss.galleon}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jboss.galleon</groupId>
+                <artifactId>galleon-maven-universe</artifactId>
+                <version>${version.org.jboss.galleon}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
