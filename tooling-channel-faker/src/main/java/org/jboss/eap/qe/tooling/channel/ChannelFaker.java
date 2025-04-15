@@ -83,7 +83,8 @@ public class ChannelFaker {
                 "name: \"" + fakeChannelName + "\"\n" +
                 "repositories:\n" +
                 "  - id: \"" + fakeChannelRepoName + "\"\n" +
-                "    url: \"" + repoUri + "\"\n" +
+                // https://datatracker.ietf.org/doc/rfc8089/ & https://issues.redhat.com/browse/JBEAP-29654
+                "    url: \"" + repoUri.toString().replaceAll("file:///", "file:/") + "\"\n" +
                 "manifest:\n" +
                 "  maven:\n" +
                 "    groupId: \"" + fakeChannelMavenCoord.getGroupId() + "\"\n" +
@@ -112,7 +113,8 @@ public class ChannelFaker {
                 "  manifest: " + fakeChannelMavenCoord.getGroupId() + ":" + fakeChannelMavenCoord.getArtifactId() + (composeManifestVersion ? ":" + fakeChannelMavenCoord.getVersion() : "") + "\n" +
                 "  repositories:\n" +
                 "    id: " + fakeChannelRepoName + "\n" +
-                "    url: " + repoUri + "\n";
+                // https://datatracker.ietf.org/doc/rfc8089/ & https://issues.redhat.com/browse/JBEAP-29654
+                "    url: " + repoUri.toString().replaceAll("file:///", "file:/") + "\n";
         return platformLineBreaks && isWindows() ? output.replace("\n", "\r\n") : output;
     }
 
