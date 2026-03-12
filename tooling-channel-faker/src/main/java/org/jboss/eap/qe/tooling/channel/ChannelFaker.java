@@ -94,8 +94,8 @@ public class ChannelFaker {
     }
 
     /**
-     * Get prospero output of fake channel. Use different formatting for JBossCLI.
-     * @param composeManifestVersion amnifest version
+     * Get prospero output of fake channel.
+     * @param composeManifestVersion manifest version
      * @return prospero output
      */
     public String composeProsperoOutputChannel(boolean composeManifestVersion) {
@@ -103,18 +103,19 @@ public class ChannelFaker {
     }
 
     /**
-     * Get prospero output of fake channel. Use different formatting for JBossCLI.
+     * Get prospero output of fake channel.
      * @param composeManifestVersion manifest version
      * @param platformLineBreaks add line break
      * @return prospero output
      */
     public String composeProsperoOutputChannel(boolean composeManifestVersion, boolean platformLineBreaks) {
-        String output = "# " + fakeChannelName + "\n" +
-                "  manifest: " + fakeChannelMavenCoord.getGroupId() + ":" + fakeChannelMavenCoord.getArtifactId() + (composeManifestVersion ? ":" + fakeChannelMavenCoord.getVersion() : "") + "\n" +
-                "  repositories:\n" +
-                "    id: " + fakeChannelRepoName + "\n" +
-                // https://datatracker.ietf.org/doc/rfc8089/ & https://issues.redhat.com/browse/JBEAP-29654
-                "    url: " + repoUri.toString().replaceAll("file:///", "file:/") + "\n";
+        // Format:
+        // channel-name groupId:artifactId[:version]
+        String coords = fakeChannelMavenCoord.getGroupId() + ":" + fakeChannelMavenCoord.getArtifactId();
+        if (composeManifestVersion) {
+            coords += ":" + fakeChannelMavenCoord.getVersion();
+        }
+        String output = String.format("%s %s\n", fakeChannelName, coords);
         return platformLineBreaks && isWindows() ? output.replace("\n", "\r\n") : output;
     }
 
