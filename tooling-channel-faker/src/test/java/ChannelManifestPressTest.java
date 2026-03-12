@@ -1,3 +1,4 @@
+import org.apache.maven.shared.invoker.DefaultInvoker;
 import org.jboss.eap.qe.tooling.channel.ChannelManifestLocalRepoReader;
 import org.jboss.eap.qe.tooling.channel.ChannelManifestPress;
 import org.jboss.eap.qe.tooling.channel.ChannelManifestReader;
@@ -26,7 +27,6 @@ public class ChannelManifestPressTest {
     @BeforeAll
     public static void setupManifestRepository() throws IOException, InterruptedException, URISyntaxException, ArtifactInstallException {
         tempRepo = Files.createTempDirectory("recursive-repo-test");
-        final File mvnBinary = MavenTestUtils.findMvnBinary();
 
         //install main manifest
         new MavenArtifactFaker.Builder()
@@ -35,7 +35,7 @@ public class ChannelManifestPressTest {
                 .version(MANIFEST_VERSION)
                 .mavenRepoLocal(tempRepo.toAbsolutePath().toString())
                 .build()
-                .installRealFakeArtifactInLocalMavenRepo(mvnBinary,
+                .installRealFakeArtifactInLocalMavenRepo(new DefaultInvoker().getMavenHome(),
                         Path.of(ManifestInspectorRecursiveTest.class.getClassLoader().getResource("manifest-requirement/wildfly-35.0.0.Final-manifest.yaml").toURI()));
 
         //install requirement manifest
@@ -45,7 +45,7 @@ public class ChannelManifestPressTest {
                 .version(MANIFEST_VERSION)
                 .mavenRepoLocal(tempRepo.toAbsolutePath().toString())
                 .build()
-                .installRealFakeArtifactInLocalMavenRepo(mvnBinary,
+                .installRealFakeArtifactInLocalMavenRepo(new DefaultInvoker().getMavenHome(),
                         Path.of(ManifestInspectorRecursiveTest.class.getClassLoader().getResource("manifest-requirement/wildfly-ee-35.0.0.Final-manifest.yaml").toURI()));
     }
 
