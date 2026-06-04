@@ -110,6 +110,7 @@ public class ServerProcess {
                             throw new ServerRunnableExecutionException(e);
                         } finally {
                             process.toHandle().children().forEach(ProcessHandle::destroy);
+                            process.destroy();
                         }
                     }
                 })
