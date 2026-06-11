@@ -122,7 +122,7 @@ public class ObservableOutputStreamsProcess {
         }
     }
 
-    private boolean isWindows() {
+    private static boolean isWindows() {
         return System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win");
     }
 
@@ -157,7 +157,7 @@ public class ObservableOutputStreamsProcess {
          * @param commandLine command line to be started as an observable process
          */
         public Builder(final CommandLine commandLine) {
-            this(commandLine, 5, TimeUnit.MINUTES);
+            this(commandLine, ObservableOutputStreamsProcess.isWindows() ? 15 : 5, TimeUnit.MINUTES);
         }
 
         /**
