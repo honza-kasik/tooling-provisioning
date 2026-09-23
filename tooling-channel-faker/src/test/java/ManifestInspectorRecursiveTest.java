@@ -31,6 +31,8 @@ public class ManifestInspectorRecursiveTest {
                 .groupId(MANIFEST_GROUP_ID)
                 .artifactId(MANIFEST_ARTIFACT_ID)
                 .version(MANIFEST_VERSION)
+                .packaging("yaml")
+                .classifier("manifest")
                 .mavenRepoLocal(tempRepo.toAbsolutePath().toString())
                 .build()
                 .installRealFakeArtifactInLocalMavenRepo(new DefaultInvoker().getMavenHome(),
@@ -41,6 +43,8 @@ public class ManifestInspectorRecursiveTest {
                 .groupId(MANIFEST_GROUP_ID)
                 .artifactId(MANIFEST_REQUIREMENT_ARTIFACT_ID)
                 .version(MANIFEST_VERSION)
+                .packaging("yaml")
+                .classifier("manifest")
                 .mavenRepoLocal(tempRepo.toAbsolutePath().toString())
                 .build()
                 .installRealFakeArtifactInLocalMavenRepo(new DefaultInvoker().getMavenHome(),
