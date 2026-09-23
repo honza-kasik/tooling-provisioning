@@ -22,6 +22,7 @@
         <module>tooling-resource-utils</module>
         <module>tooling-string-utils</module>
         <module>tooling-feature-pack</module>
+        <module>tooling-pairwise</module>
     </modules>
 
     <properties>
