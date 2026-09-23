@@ -1,0 +1,16 @@
+---
+schemaVersion: "1.1.0"
+name: "WildFly manifest version 35.0.0.Final"
+id: "org.wildfly.channels:wildfly"
+description: "Manifest for WildFly feature pack."
+requires:
+  - id: "org.wildfly.channels:wildfly-ee"
+    maven:
+      groupId: "org.wildfly.channels"
+      artifactId: "wildfly-ee"
+      version: "35.0.0.Final"
+streams:
+  - groupId: "com.fasterxml.jackson.jr"
+    artifactId: "jackson-jr-objects"
+    version: "2.18.2"
+logicalVersion: "WildFly 35.0.0.Final"

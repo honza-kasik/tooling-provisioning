@@ -1,0 +1,105 @@
+= Provisioning tooling
+
+> Set of tools to ease provisioning testing and prevent code redundancy across multiple testsuites.
+
+This started as a tooling for the `wildfly-maven-plugin` and later was used in several other testsuites. To make maintenance easier we now have this project.
+
+== Modules available
+
+Released as standalone libraries. Note that individual modules can depend on each other.
+
+=== tooling-process-execution
+
+Offers following abstractions:
+
+* `ObservableOutputStreamsProcess` abstraction over `commons-exec` to easily execute a command line and extract standard and error output.
+* `ServerProcess` abstraction over server process execution which allows to run client code at any point in log needed and also on point when client connects to a server.
+
+Users of this module are encouraged to write their own command line abstractions over `org.apache.commons.exec.CommandLine` to use with `ObservableOutputStreamsProcess`.
+
+.`ObservableOutputStreamsProcess` example
+[,java]
+----
+new ObservableOutputStreamsProcess.Builder(new ProsperoCommandLine()
+        .addArgument(INSTALL)
+        .addArgument(DIR + targetServer)
+        .addArgument(PROFILE + "eap-8.0")
+        .addErrorOutputObserver(System.out::println)
+        .addProcessOutputObserver(System.out::println)
+        .build()
+        .invoke()
+----
+
+.`ServerProcess` use example with prepare management client
+[,java]
+----
+new ServerProcess(new ShCommandLine(eapPath.resolve(Paths.get("bin", "standalone.sh"))))
+        .runAfterServerStartedAndDestroyProcess(client -> {
+            new Administration(client).shutdown();
+        });
+----
+
+=== tooling-maven-faker
+
+Anything related to smuggling impostors into a Maven lifecycle should be placed here.
+
+==== MavenArtifactFaker
+
+`MavenArtifactFaker` allows you to produce install a "fake" artifact into a Maven repository.
+
+==== VersionAssume
+
+`VersionAssume` eases assuming previous/next version of an artifact
+
+.Assume next version of an artifact using semantic versioning
+[,java]
+----
+final String nextVersion = new SemanticVersionAssume(currentVersion).nextVersion();
+----
+
+=== tooling-channel-faker
+
+Anything related to fabricating channels and channel manifests have its place here.
+
+==== ChannelFaker
+
+`ChannelFaker` will help you to generate fake channel YAML
+
+
+==== ChannelManifestFaker
+
+`ChannelManifestFaker` will help you to generate fake channel manifest and install it into a local Maven repository with help of `tooling-maven-faker`
+
+.Mock empty channel manifest easily with `ChannelManifestFaker` and `wildfly-channel` library
+[,java]
+----
+//mock new empty channel manifest
+ChannelManifestFaker emptyManifestFaker = new ChannelManifestFaker.Builder(new MavenCoordinate(MANIFEST_EMPTY_GROUP_ID, MANIFEST_EMPTY_ARTIFACT_ID, MANIFEST_EMPTY_VERSION))
+        .mavenRepositoryPath(Paths.get(Configuration.getMavenLocalCache()))
+        .channelManifest(new ChannelManifest("Mocked empty manifest", "empty-mocked-manifest",
+                "mocked empty manifest with for testing purposes",
+                Collections.emptyList()))
+        .build();
+
+emptyManifestFaker.installFakeManifest();
+----
+
+==== ChannelManifestInspector
+
+`ChannelManifestInspector` is a set of necessary boilerplate code to easily obtain crucial data from an existing channel manifest using `wildfly-channel` library
+
+.Find out version of an artifact easily using `ChannelManifestInspector`
+[,java]
+----
+ChannelManifestInspector channelManifestInspector = new ChannelManifestInspector(
+        Configuration.getChannelManifestGroupId(),
+        Configuration.getChannelManifestArtifactId(),
+        Paths.get(new URI(Configuration.getMavenRepositoryUrl())));
+
+String currentVersion = channelManifestInspector.inspectStreamVersion(CONTENT_GROUP_ID, CONTENT_GROUP_ID);
+----
+
+== How to release
+
+See link:CONTRIBUTING.md[CONTRIBUTING.md] for the full release procedure including prerequisites.
+

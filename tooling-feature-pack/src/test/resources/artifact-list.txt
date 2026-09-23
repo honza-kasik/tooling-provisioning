@@ -1,0 +1,7 @@
+# Synthetic test data for ArtifactListFeaturePackInspectorTest.
+# Hashes are placeholders — only the Maven repository path layout matters for parsing.
+a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6abcd,/org/wildfly/wildfly-parent/41.0.1.Final/wildfly-parent-41.0.1.Final.pom
+b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6abcdef,/org/wildfly/wildfly-ee-galleon-pack/41.0.1.Final/wildfly-ee-galleon-pack-41.0.1.Final.zip
+c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6abcdef01,/org/wildfly/wildfly-standard-ee-bom/41.0.1.Final/wildfly-standard-ee-bom-41.0.1.Final.pom
+d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6abcdef0123,/com/fasterxml/jackson/core/jackson-core/2.17.2/jackson-core-2.17.2.jar
+e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6abcdef012345,/org/jboss/logging/jboss-logging/3.5.3.Final/jboss-logging-3.5.3.Final.jar
