@@ -19,6 +19,11 @@
         Based on https://github.com/jfdenise/wildfly-sbom-checker.
     </description>
 
+    <properties>
+        <!-- version.wildfly.test of the parent (used by other modules) predates the SBOM support -->
+        <version.wildfly.sbom.test>42.0.0.Beta1</version.wildfly.sbom.test>
+    </properties>
+
     <dependencies>
         <!-- CycloneDX SBOM parser / model -->
         <dependency>
@@ -47,15 +52,66 @@
 
     <profiles>
         <!--
-            Runs SbomCheckerIT against a complete WildFly installation supplied by the caller:
-                mvn verify -pl tooling-sbom-verification -Pintegration-tests -Dwildfly.home=/path/to/wildfly
-            The server is not unpacked from Maven: SBOM support is not part of a WildFly release yet, so
-            the matching snapshot only exists in a local build.
+            Runs the integration tests (*IT) against each flavour of WildFly (community, Preview and EE),
+            unpacked to target/ from the wildfly-dist, wildfly-preview-dist and wildfly-ee-dist artifacts:
+                mvn verify -pl tooling-sbom-verification -Pintegration-tests
+            To test a local build of a flavour instead, point its home at it (the distributions are still
+            unpacked, but not used). A flavour has its own home property:
+                -Dwildfly.home=/path/to/wildfly
+                -Dwildfly.preview.home=/path/to/wildfly-preview
+                -Dwildfly.ee.home=/path/to/wildfly-ee
         -->
         <profile>
             <id>integration-tests</id>
+            <properties>
+                <wildfly.home>${project.build.directory}/wildfly/wildfly-${version.wildfly.sbom.test}</wildfly.home>
+                <wildfly.preview.home>${project.build.directory}/wildfly-preview/wildfly-preview-${version.wildfly.sbom.test}</wildfly.preview.home>
+                <wildfly.ee.home>${project.build.directory}/wildfly-ee/wildfly-${version.wildfly.sbom.test}</wildfly.ee.home>
+            </properties>
             <build>
                 <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-dependency-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>unpack-wildfly</id>
+                                <phase>pre-integration-test</phase>
+                                <goals>
+                                    <goal>unpack</goal>
+                                </goals>
+                                <configuration>
+                                    <!-- Own directories: the EE and the community zip have the same top-level directory -->
+                                    <artifactItems>
+                                        <artifactItem>
+                                            <groupId>org.wildfly</groupId>
+                                            <artifactId>wildfly-dist</artifactId>
+                                            <version>${version.wildfly.sbom.test}</version>
+                                            <type>zip</type>
+                                            <overWrite>false</overWrite>
+                                            <outputDirectory>${project.build.directory}/wildfly</outputDirectory>
+                                        </artifactItem>
+                                        <artifactItem>
+                                            <groupId>org.wildfly</groupId>
+                                            <artifactId>wildfly-preview-dist</artifactId>
+                                            <version>${version.wildfly.sbom.test}</version>
+                                            <type>zip</type>
+                                            <overWrite>false</overWrite>
+                                            <outputDirectory>${project.build.directory}/wildfly-preview</outputDirectory>
+                                        </artifactItem>
+                                        <artifactItem>
+                                            <groupId>org.wildfly</groupId>
+                                            <artifactId>wildfly-ee-dist</artifactId>
+                                            <version>${version.wildfly.sbom.test}</version>
+                                            <type>zip</type>
+                                            <overWrite>false</overWrite>
+                                            <outputDirectory>${project.build.directory}/wildfly-ee</outputDirectory>
+                                        </artifactItem>
+                                    </artifactItems>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-failsafe-plugin</artifactId>
@@ -63,6 +119,8 @@
                         <configuration>
                             <systemPropertyVariables>
                                 <wildfly.home>${wildfly.home}</wildfly.home>
+                                <wildfly.preview.home>${wildfly.preview.home}</wildfly.preview.home>
+                                <wildfly.ee.home>${wildfly.ee.home}</wildfly.ee.home>
                             </systemPropertyVariables>
                         </configuration>
                         <executions>

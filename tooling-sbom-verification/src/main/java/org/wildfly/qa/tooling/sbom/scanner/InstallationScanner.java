@@ -27,10 +27,14 @@ import java.util.List;
  * {@code version}) and compare directly, avoiding the ambiguity of splitting
  * artifact ids that themselves contain digit-prefixed segments (e.g.
  * {@code wildfly-clustering-session-spec-servlet-6.0-5.0.11.Final.jar}).
+ *
+ * Paths that cannot be read are not skipped silently: after a scan they are available from
+ * {@link #unreadable()}, so a caller can tell that the returned list may be incomplete.
  */
 public class InstallationScanner {
 
     private final Path installRoot;
+    private final List<String> unreadable = new ArrayList<>();
 
     /**
      * @param installRoot path to the WildFly installation root (the directory
@@ -43,13 +47,15 @@ public class InstallationScanner {
 
     /**
      * Walks the installation tree and returns every JAR found, except those
-     * under {@code .installation/}.
+     * under {@code .installation/}. The paths this scan could not read are available
+     * afterwards from {@link #unreadable()}; those of an earlier scan are discarded.
      *
      * @return unmodifiable list of discovered artifacts
      * @throws IOException if the file tree cannot be walked
      */
     public List<InstalledArtifact> scan() throws IOException {
         List<InstalledArtifact> result = new ArrayList<>();
+        unreadable.clear();
         Path excluded = installRoot.resolve(".installation").toAbsolutePath().normalize();
 
         Files.walkFileTree(installRoot, new SimpleFileVisitor<>() {
@@ -74,11 +80,19 @@ public class InstallationScanner {
 
             @Override
             public FileVisitResult visitFileFailed(Path file, IOException exc) {
-                System.err.println("WARN: cannot read " + file + " – " + exc.getMessage());
+                unreadable.add(file.toAbsolutePath() + " (" + exc.getClass().getSimpleName() + ")");
                 return FileVisitResult.CONTINUE;
             }
         });
 
         return Collections.unmodifiableList(result);
+    }
+
+    /**
+     * @return paths the last {@link #scan()} could not read, each with the exception type; empty before
+     *         the first scan. When not empty, the scanned list may be incomplete.
+     */
+    public List<String> unreadable() {
+        return Collections.unmodifiableList(new ArrayList<>(unreadable));
     }
 }

@@ -12,7 +12,9 @@ import org.cyclonedx.model.component.evidence.Occurrence;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -111,6 +113,27 @@ public final class ComponentUtils {
         return collectAllComponents(components)
                 .filter(c -> c.getPurl() != null && c.getPurl().startsWith("pkg:maven/"))
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Maps the purl of every component in the tree to the purl of its nearest parent. Top-level components
+     * have no parent and are not in the map; neither are components without a purl.
+     */
+    public static Map<String, String> parentIndex(List<Component> components) {
+        Map<String, String> index = new LinkedHashMap<>();
+        addParents(components, null, index);
+        return index;
+    }
+
+    private static void addParents(List<Component> components, String parentPurl, Map<String, String> index) {
+        if (components == null) return;
+        for (Component c : components) {
+            String purl = c.getPurl();
+            if (purl != null && parentPurl != null) {
+                index.put(purl, parentPurl);
+            }
+            addParents(c.getComponents(), purl, index);
+        }
     }
 
     /** Recursively counts all components whose purl starts with the given scheme. */
