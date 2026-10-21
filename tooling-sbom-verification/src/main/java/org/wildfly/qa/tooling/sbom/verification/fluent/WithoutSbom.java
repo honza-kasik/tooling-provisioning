@@ -4,6 +4,7 @@
  */
 package org.wildfly.qa.tooling.sbom.verification.fluent;
 
+import org.wildfly.qa.tooling.sbom.result.CheckCategory;
 import org.wildfly.qa.tooling.sbom.result.CheckResult;
 import org.wildfly.qa.tooling.sbom.verification.Context;
 import org.wildfly.qa.tooling.sbom.result.CheckResults;
@@ -46,6 +47,6 @@ public final class WithoutSbom {
     private CheckResult checkSbomAbsent() {
         return context.sbomFile()
                 .map(CheckResults::sbomUnexpected)
-                .orElseGet(() -> CheckResults.passed(CheckResults.SBOM));
+                .orElseGet(() -> CheckResults.passed(CheckCategory.SBOM));
     }
 }

@@ -4,18 +4,27 @@
  */
 package org.wildfly.qa.tooling.sbom.verification;
 
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.wildfly.qa.tooling.sbom.result.CheckCategory;
 import org.wildfly.qa.tooling.sbom.result.CheckResult;
-import org.wildfly.qa.tooling.sbom.result.CheckResults;
 import org.wildfly.qa.tooling.sbom.result.ShadedResult;
+import org.wildfly.qa.tooling.sbom.scanner.InstallationScanner;
+import org.wildfly.qa.tooling.sbom.verification.fluent.WithDiskChecks;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+import java.util.zip.GZIPInputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -28,8 +37,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * in the product name that the SBOM declares; everything else is expected to hold for all of them. The
  * installation of a flavour is the directory given by its system property, which the
  * {@code integration-tests} profile sets to the distribution unpacked from Maven. A flavour whose property is
- * not set is skipped. The SBOM may be packaged either as {@code sbom.cdx.json} or as
- * {@code sbom.cdx.json.gz}, as WildFly builds do. Run with:
+ * not set is skipped. WildFly builds package the SBOM as {@code sbom.cdx.json.gz}, which is the path the
+ * tests pass to the verifier. Run with:
  * <pre>
  *     mvn verify -pl tooling-sbom-verification -Pintegration-tests
  * </pre>
@@ -39,6 +48,9 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * {@code metadata.component.cpe}.</p>
  */
 class SbomVerifierIT {
+
+    /** Where WildFly builds put the (gzipped) SBOM, relative to the installation. */
+    private static final Path SBOM_FILE = Path.of("sbom.cdx.json.gz");
 
     /** A flavour of WildFly: the product name its SBOM declares and where its installation is. */
     enum Flavour {
@@ -74,7 +86,7 @@ class SbomVerifierIT {
     @ParameterizedTest(name = "{0}")
     @EnumSource(Flavour.class)
     void allChecksPass(Flavour flavour) {
-        List<CheckResult> results = new SbomVerifier(flavour.home())
+        List<CheckResult> results = verifier(flavour)
                 .withSbom()
                 .withManifest()
                 .withSbomMatchingManifest()
@@ -82,8 +94,8 @@ class SbomVerifierIT {
                 .verify();
 
         assertAllPassed(results);
-        assertCategories(results, CheckResults.INSTALLED_JARS, CheckResults.SBOM, CheckResults.MANIFEST,
-                CheckResults.SBOM_VS_MANIFEST, CheckResults.SBOM_VS_DISK, CheckResults.DISK_VS_SBOM);
+        assertCategories(results, CheckCategory.INSTALLED_JARS, CheckCategory.SBOM, CheckCategory.MANIFEST,
+                CheckCategory.SBOM_VS_MANIFEST, CheckCategory.SBOM_VS_DISK, CheckCategory.DISK_VS_SBOM);
     }
 
     // ---- SBOM ----------------------------------------------------------------
@@ -91,7 +103,7 @@ class SbomVerifierIT {
     @ParameterizedTest(name = "{0}")
     @EnumSource(Flavour.class)
     void sbomIsValidAndDescribesTheProduct(Flavour flavour) {
-        List<CheckResult> results = new SbomVerifier(flavour.home())
+        List<CheckResult> results = verifier(flavour)
                 .withSbom()
                 .withBomCheck(bom -> bom.getBomFormat() != null && bom.getSpecVersion() != null,
                         "bomFormat or specVersion is missing")
@@ -106,7 +118,7 @@ class SbomVerifierIT {
     @ParameterizedTest(name = "{0}")
     @EnumSource(Flavour.class)
     void sbomNamesTheExpectedProduct(Flavour flavour) {
-        List<CheckResult> results = new SbomVerifier(flavour.home())
+        List<CheckResult> results = verifier(flavour)
                 .withSbom()
                 .withBomCheck(bom -> flavour.productName.equals(bom.getMetadata().getComponent().getName()),
                         "metadata.component.name is not " + flavour.productName)
@@ -118,22 +130,55 @@ class SbomVerifierIT {
     @ParameterizedTest(name = "{0}")
     @EnumSource(Flavour.class)
     void failedBomCheckIsReportedWithItsMessage(Flavour flavour) {
-        List<CheckResult> results = new SbomVerifier(flavour.home())
+        List<CheckResult> results = verifier(flavour)
                 .withSbom()
                 .withBomCheck(bom -> false, "expected failure")
                 .verify();
 
         CheckResult failed = onlyFailure(results);
-        assertEquals(CheckResults.SBOM, failed.category());
+        assertEquals(CheckCategory.SBOM, failed.category());
         assertEquals(List.of("expected failure"), failed.issues());
+    }
+
+    /**
+     * The SBOMs currently put {@code confidence} on the identity entry, but the schema also requires it in
+     * every {@code methods[]} entry. Until the generator is fixed, that is the only schema error allowed;
+     * any other one fails this test. It also passes once the SBOM is fully valid.
+     */
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(Flavour.class)
+    void schemaValidationFindsNothingButTheKnownIdentityEvidenceErrors(Flavour flavour) {
+        List<CheckResult> results = verifier(flavour)
+                .withSbom()
+                .withSchemaValidation()
+                .verify();
+
+        List<CheckResult> failed = results.stream().filter(r -> !r.passed()).toList();
+        assertTrue(failed.size() <= 1, "Expected at most the schema check to fail: " + failed);
+        failed.forEach(result -> {
+            assertEquals(CheckCategory.SBOM, result.category());
+            // the first issue is the header with the file and the totals; the others are the error groups
+            List<String> unknown = result.issues().stream().skip(1)
+                    .filter(issue -> !issue.contains(".evidence.identity"))
+                    .toList();
+            assertTrue(unknown.isEmpty(), "Unexpected schema errors: " + unknown);
+        });
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(Flavour.class)
+    void schemaValidationIsOffUnlessAskedFor(Flavour flavour) {
+        List<CheckResult> results = verifier(flavour).withSbom().verify();
+
+        assertAllPassed(results);
     }
 
     @ParameterizedTest(name = "{0}")
     @EnumSource(Flavour.class)
     void installationWithSbomFailsWhenNoSbomIsExpected(Flavour flavour) {
-        List<CheckResult> results = new SbomVerifier(flavour.home()).withoutSbom().verify();
+        List<CheckResult> results = verifier(flavour).withoutSbom().verify();
 
-        assertEquals(CheckResults.SBOM, onlyFailure(results).category());
+        assertEquals(CheckCategory.SBOM, onlyFailure(results).category());
     }
 
     // ---- manifest ------------------------------------------------------------
@@ -141,7 +186,7 @@ class SbomVerifierIT {
     @ParameterizedTest(name = "{0}")
     @EnumSource(Flavour.class)
     void manifestHasStreams(Flavour flavour) {
-        List<CheckResult> results = new SbomVerifier(flavour.home())
+        List<CheckResult> results = verifier(flavour)
                 .withSbom()
                 .withManifest()
                 .withManifestCheck(manifest -> !manifest.getStreams().isEmpty(), "the manifest has no streams")
@@ -153,9 +198,9 @@ class SbomVerifierIT {
     @ParameterizedTest(name = "{0}")
     @EnumSource(Flavour.class)
     void installationWithManifestFailsWhenNoManifestIsExpected(Flavour flavour) {
-        List<CheckResult> results = new SbomVerifier(flavour.home()).withSbom().withoutManifest().verify();
+        List<CheckResult> results = verifier(flavour).withSbom().withoutManifest().verify();
 
-        assertEquals(CheckResults.MANIFEST, onlyFailure(results).category());
+        assertEquals(CheckCategory.MANIFEST, onlyFailure(results).category());
     }
 
     // ---- disk checks and shaded artifacts ----------------------------------------
@@ -163,10 +208,10 @@ class SbomVerifierIT {
     @ParameterizedTest(name = "{0}")
     @EnumSource(Flavour.class)
     void shadedArtifactsAreNotACheckUnlessAskedFor(Flavour flavour) {
-        List<CheckResult> results = new SbomVerifier(flavour.home())
+        List<CheckResult> results = verifier(flavour)
                 .withSbom().withManifest().withDiskChecks().verify();
 
-        assertFalse(results.stream().anyMatch(r -> CheckResults.SHADED.equals(r.category())),
+        assertFalse(results.stream().anyMatch(r -> CheckCategory.SHADED.equals(r.category())),
                 "No shaded check expected when withShadedCheck is not called: " + results);
     }
 
@@ -175,7 +220,7 @@ class SbomVerifierIT {
     void shadedCheckReceivesTheUntrackedShadedArtifacts(Flavour flavour) {
         AtomicReference<ShadedResult> seen = new AtomicReference<>();
 
-        List<CheckResult> results = new SbomVerifier(flavour.home())
+        List<CheckResult> results = verifier(flavour)
                 .withSbom().withManifest().withDiskChecks()
                 .withShadedCheck(shaded -> {
                     seen.set(shaded);
@@ -192,17 +237,305 @@ class SbomVerifierIT {
     @ParameterizedTest(name = "{0}")
     @EnumSource(Flavour.class)
     void failedShadedCheckIsReportedWithItsMessage(Flavour flavour) {
-        List<CheckResult> results = new SbomVerifier(flavour.home())
+        List<CheckResult> results = verifier(flavour)
                 .withSbom().withManifest().withDiskChecks()
                 .withShadedCheck(shaded -> false, "expected failure")
                 .verify();
 
         CheckResult failed = onlyFailure(results);
-        assertEquals(CheckResults.SHADED, failed.category());
+        assertEquals(CheckCategory.SHADED, failed.category());
         assertEquals(List.of("expected failure"), failed.issues());
     }
 
+    // ---- excluded scan paths ---------------------------------------------------
+
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(Flavour.class)
+    void excludedScanPathThatDoesNotExistChangesNothing(Flavour flavour) {
+        List<Path> excluded = List.of(InstallationScanner.DEFAULT_EXCLUDED.get(0), Path.of("no/such/dir"));
+
+        List<CheckResult> results = new SbomVerifier(flavour.home(), SBOM_FILE, excluded)
+                .withSbom().withManifest().withDiskChecks()
+                .verify();
+
+        assertAllPassed(results);
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(Flavour.class)
+    void excludingTheModulesDirectoryMakesTheSbomComponentsThereMissing(Flavour flavour) {
+        List<Path> excluded = List.of(InstallationScanner.DEFAULT_EXCLUDED.get(0), Path.of("modules"));
+
+        List<CheckResult> results = new SbomVerifier(flavour.home(), SBOM_FILE, excluded)
+                .withSbom().withManifest().withDiskChecks()
+                .verify();
+
+        CheckResult failed = onlyFailure(results);
+        assertEquals(CheckCategory.SBOM_VS_DISK, failed.category());
+    }
+
+    // ---- fat JAR names -----------------------------------------------------------
+
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(Flavour.class)
+    void explicitDefaultFatJarNamesChangeNothing(Flavour flavour) {
+        List<CheckResult> results = verifier(flavour)
+                .withSbom().withManifest().withDiskChecks()
+                .withFatJarNames(WithDiskChecks.DEFAULT_FAT_JAR_NAMES)
+                .withGenericFatJars(WithDiskChecks.DEFAULT_GENERIC_FAT_JARS)
+                .verify();
+
+        assertAllPassed(results);
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(Flavour.class)
+    void withoutTheFatJarNamesTheFixedNameJarsAreMissing(Flavour flavour) {
+        List<CheckResult> results = verifier(flavour)
+                .withSbom().withManifest().withDiskChecks()
+                .withFatJarNames(Map.of())
+                .verify();
+
+        assertTrue(results.stream().anyMatch(r -> !r.passed() && r.category() == CheckCategory.SBOM_VS_DISK),
+                "Expected the fixed-name JARs to be reported missing: " + results);
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(Flavour.class)
+    void withoutTheGenericFatJarsTheAssembledJarsAreUndeclared(Flavour flavour) {
+        List<CheckResult> results = verifier(flavour)
+                .withSbom().withManifest().withDiskChecks()
+                .withGenericFatJars(Set.of())
+                .verify();
+
+        CheckResult failed = onlyFailure(results);
+        assertEquals(CheckCategory.DISK_VS_SBOM, failed.category());
+        assertEquals(WithDiskChecks.DEFAULT_GENERIC_FAT_JARS.size(), failed.issues().size(), failed.toString());
+    }
+
+    /** A fat JAR on disk and a Maven component; {@code generic} adds the pkg:generic entry that declares the JAR. */
+    private static String fatJarSbom(boolean generic) {
+        String genericComponent = """
+                ,{"type":"library","name":"jboss-client","version":"1",
+                  "purl":"pkg:generic/jboss-client@1",
+                  "evidence":{"occurrences":[{"location":"bin/client/jboss-client.jar"}]}}
+                """;
+        return """
+                {"bomFormat":"CycloneDX","specVersion":"1.6","version":1,"components":[
+                  {"type":"library","group":"org.example","name":"lib","version":"1",
+                   "purl":"pkg:maven/org.example/lib@1","evidence":{"occurrences":[{"location":"modules/lib-1.jar"}]}}
+                """ + (generic ? genericComponent : "") + "]}";
+    }
+
+    private static Path fatJarInstallation(Path root, boolean generic) throws IOException {
+        Files.createDirectories(root.resolve("modules"));
+        Files.createDirectories(root.resolve("bin/client"));
+        Files.writeString(root.resolve("modules/lib-1.jar"), "x");
+        Files.writeString(root.resolve("bin/client/jboss-client.jar"), "x");
+        Files.writeString(root.resolve("sbom.cdx.json"), fatJarSbom(generic));
+        return root;
+    }
+
+    @Test
+    void aListedFatJarIsAcceptedWhenTheSbomDeclaresItAsGeneric(@TempDir Path root) throws IOException {
+        fatJarInstallation(root, true);
+
+        List<CheckResult> results = new SbomVerifier(root, Path.of("sbom.cdx.json"),
+                InstallationScanner.DEFAULT_EXCLUDED)
+                .withSbom().withoutManifest().withDiskChecks()
+                .verify();
+
+        assertAllPassed(results);
+    }
+
+    @Test
+    void aListedFatJarTheSbomDoesNotDeclareAsGenericIsReportedAsUndeclared(@TempDir Path root) throws IOException {
+        fatJarInstallation(root, false);
+
+        List<CheckResult> results = new SbomVerifier(root, Path.of("sbom.cdx.json"),
+                InstallationScanner.DEFAULT_EXCLUDED)
+                .withSbom().withoutManifest().withDiskChecks()
+                .verify();
+
+        CheckResult failed = onlyFailure(results);
+        assertEquals(CheckCategory.DISK_VS_SBOM, failed.category());
+        assertEquals(List.of("jboss-client.jar"), failed.issues());
+    }
+
+    @Test
+    void aGenericFatJarTheSbomDeclaresButIsMissingOnDiskIsReported(@TempDir Path root) throws IOException {
+        fatJarInstallation(root, true);
+        Files.delete(root.resolve("bin/client/jboss-client.jar"));
+
+        List<CheckResult> results = new SbomVerifier(root, Path.of("sbom.cdx.json"),
+                InstallationScanner.DEFAULT_EXCLUDED)
+                .withSbom().withoutManifest().withDiskChecks()
+                .verify();
+
+        CheckResult failed = onlyFailure(results);
+        assertEquals(CheckCategory.SBOM_VS_DISK, failed.category());
+        assertEquals(1, failed.issues().size(), failed.toString());
+        assertTrue(failed.issues().get(0).contains("pkg:generic/jboss-client@1")
+                && failed.issues().get(0).contains("bin/client/jboss-client.jar"), failed.toString());
+    }
+
+    @Test
+    void aFatJarNameInAnotherDirectoryIsNotAcceptedAsGeneric(@TempDir Path root) throws IOException {
+        fatJarInstallation(root, true);
+        Files.createDirectories(root.resolve("elsewhere"));
+        Files.writeString(root.resolve("elsewhere/jboss-client.jar"), "x");
+
+        List<CheckResult> results = new SbomVerifier(root, Path.of("sbom.cdx.json"),
+                InstallationScanner.DEFAULT_EXCLUDED)
+                .withSbom().withoutManifest().withDiskChecks()
+                .verify();
+
+        CheckResult failed = onlyFailure(results);
+        assertEquals(CheckCategory.DISK_VS_SBOM, failed.category());
+        assertEquals(List.of("jboss-client.jar"), failed.issues());
+    }
+
+    // ---- every occurrence of a Maven component -----------------------------------
+
+    /** A Maven JAR that the SBOM places at the given locations. */
+    private static String jarSbom(String... locations) {
+        String occurrences = java.util.Arrays.stream(locations)
+                .map(l -> "{\"location\":\"" + l + "\"}")
+                .collect(Collectors.joining(","));
+        return "{\"bomFormat\":\"CycloneDX\",\"specVersion\":\"1.6\",\"version\":1,\"components\":["
+                + "{\"type\":\"library\",\"group\":\"org.example\",\"name\":\"lib\",\"version\":\"1\","
+                + "\"purl\":\"pkg:maven/org.example/lib@1\",\"evidence\":{\"occurrences\":[" + occurrences + "]}}]}";
+    }
+
+    private static List<CheckResult> verifyJar(Path root, String... locations) throws IOException {
+        Files.createDirectories(root.resolve("modules"));
+        Files.writeString(root.resolve("modules/lib-1.jar"), "x");
+        Files.writeString(root.resolve("sbom.cdx.json"), jarSbom(locations));
+        return new SbomVerifier(root, Path.of("sbom.cdx.json"), InstallationScanner.DEFAULT_EXCLUDED)
+                .withSbom().withoutManifest().withDiskChecks()
+                .verify();
+    }
+
+    @Test
+    void aMavenJarWhoseOccurrencesAllExistPasses(@TempDir Path root) throws IOException {
+        assertAllPassed(verifyJar(root, "modules/lib-1.jar", "modules"));
+    }
+
+    @Test
+    void aMissingSecondOccurrenceOfAMavenJarIsReported(@TempDir Path root) throws IOException {
+        CheckResult failed = onlyFailure(verifyJar(root, "modules/lib-1.jar", "modules/gone"));
+
+        assertEquals(CheckCategory.SBOM_VS_DISK, failed.category());
+        assertEquals(List.of("pkg:maven/org.example/lib@1 [file missing: modules/gone]"), failed.issues());
+    }
+
+    @Test
+    void aJarFoundElsewhereThanItsOccurrenceIsReported(@TempDir Path root) throws IOException {
+        CheckResult failed = onlyFailure(verifyJar(root, "other/lib-1.jar"));
+
+        assertEquals(List.of("pkg:maven/org.example/lib@1 [file missing: other/lib-1.jar]"), failed.issues());
+    }
+
+    @Test
+    void aMissingJarIsReportedOnceNotOncePerLookup(@TempDir Path root) throws IOException {
+        Files.createDirectories(root.resolve("modules"));
+        Files.writeString(root.resolve("sbom.cdx.json"), jarSbom("modules/lib-1.jar"));
+
+        CheckResult failed = onlyFailure(new SbomVerifier(root, Path.of("sbom.cdx.json"),
+                InstallationScanner.DEFAULT_EXCLUDED)
+                .withSbom().withoutManifest().withDiskChecks()
+                .verify());
+
+        assertEquals(List.of("pkg:maven/org.example/lib@1 [expected: lib-1.jar]"), failed.issues());
+    }
+
+    // ---- location of the SBOM ----------------------------------------------------
+
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(Flavour.class)
+    void aWrongSbomPathIsReportedAsMissing(Flavour flavour) {
+        List<CheckResult> results = new SbomVerifier(flavour.home(), Path.of("sbom.cdx.json"),
+                InstallationScanner.DEFAULT_EXCLUDED)
+                .withSbom()
+                .verify();
+
+        CheckResult failed = results.stream().filter(r -> !r.passed()).findFirst().orElseThrow();
+        assertEquals(CheckCategory.SBOM, failed.category());
+        assertTrue(failed.issues().get(0).contains("sbom.cdx.json"), failed.toString());
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(Flavour.class)
+    void anAbsolutePathToAPlainJsonSbomIsUsedAsItIs(Flavour flavour, @TempDir Path tmp) throws IOException {
+        Path plain = tmp.resolve("my-sbom.json");
+        try (InputStream in = new GZIPInputStream(Files.newInputStream(flavour.home().resolve(SBOM_FILE)))) {
+            Files.copy(in, plain);
+        }
+
+        List<CheckResult> results = new SbomVerifier(flavour.home(), plain, InstallationScanner.DEFAULT_EXCLUDED)
+                .withSbom().withManifest().withDiskChecks()
+                .verify();
+
+        assertAllPassed(results);
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(Flavour.class)
+    void withoutSbomChecksTheGivenPathOnly(Flavour flavour) {
+        List<CheckResult> results = new SbomVerifier(flavour.home(), Path.of("no-such-sbom.json"),
+                InstallationScanner.DEFAULT_EXCLUDED)
+                .withoutSbom()
+                .verify();
+
+        assertAllPassed(results);
+    }
+
+    // ---- non-JAR components ------------------------------------------------------
+
+    /** The shape of the feature pack's {@code version.txt} component, as in the real SBOMs. */
+    private static final String VERSION_TXT_SBOM = """
+            {"bomFormat":"CycloneDX","specVersion":"1.6","version":1,"components":[
+              {"type":"library","group":"org.wildfly","name":"wildfly-ee-feature-pack-product-conf",
+               "version":"42.0.0.Beta1",
+               "purl":"pkg:maven/org.wildfly/wildfly-ee-feature-pack-product-conf@42.0.0.Beta1?classifier=version&type=txt",
+               "evidence":{"occurrences":[{"location":"version.txt"}]}}]}
+            """;
+
+    @Test
+    void aNonJarComponentIsCheckedAtItsLocation(@TempDir Path root) throws IOException {
+        Files.writeString(root.resolve("sbom.cdx.json"), VERSION_TXT_SBOM);
+        Files.writeString(root.resolve("version.txt"), "WildFly - Version 42.0.0.Beta1");
+
+        List<CheckResult> results = new SbomVerifier(root, Path.of("sbom.cdx.json"),
+                InstallationScanner.DEFAULT_EXCLUDED)
+                .withSbom().withoutManifest().withDiskChecks()
+                .verify();
+
+        assertAllPassed(results);
+    }
+
+    @Test
+    void aMissingFileOfANonJarComponentIsReported(@TempDir Path root) throws IOException {
+        Files.writeString(root.resolve("sbom.cdx.json"), VERSION_TXT_SBOM);
+
+        List<CheckResult> results = new SbomVerifier(root, Path.of("sbom.cdx.json"),
+                InstallationScanner.DEFAULT_EXCLUDED)
+                .withSbom().withoutManifest().withDiskChecks()
+                .verify();
+
+        CheckResult failed = onlyFailure(results);
+        assertEquals(CheckCategory.SBOM_VS_DISK, failed.category());
+        assertEquals(1, failed.issues().size(), failed.toString());
+        assertTrue(failed.issues().get(0).contains("type=txt") && failed.issues().get(0).contains("version.txt"),
+                failed.toString());
+    }
+
     // ---- helpers ---------------------------------------------------------------
+
+    /** A verifier of the flavour's installation that skips only {@code .installation}. */
+    private static SbomVerifier verifier(Flavour flavour) {
+        return new SbomVerifier(flavour.home(), SBOM_FILE, InstallationScanner.DEFAULT_EXCLUDED);
+    }
 
     private static void assertAllPassed(List<CheckResult> results) {
         assertFalse(results.isEmpty(), "Expected at least one check result");
@@ -210,7 +543,7 @@ class SbomVerifierIT {
         assertTrue(failed.isEmpty(), "Checks failed: " + failed);
     }
 
-    private static void assertCategories(List<CheckResult> results, String... expected) {
+    private static void assertCategories(List<CheckResult> results, CheckCategory... expected) {
         assertEquals(Set.of(expected), results.stream().map(CheckResult::category).collect(Collectors.toSet()));
         assertEquals(expected.length, results.size());
     }

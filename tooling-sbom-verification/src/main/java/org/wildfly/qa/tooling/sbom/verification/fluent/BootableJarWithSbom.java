@@ -10,13 +10,14 @@ import org.wildfly.qa.tooling.sbom.verification.BootableJarSbomVerifier;
 import org.wildfly.qa.tooling.sbom.verification.SbomVerifier;
 
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.List;
 import java.util.function.Predicate;
 
 /**
  * A bootable JAR that is expected to have a valid SBOM in {@code META-INF/sbom}. Further conditions on it
  * can be added with {@link #withBomCheck(Predicate, String)}; the chain continues with
- * {@link #withExtractedWildflyZipSbomVerifier()}.
+ * {@link #withExtractedWildflyZipSbomVerifier(Path, Collection)}.
  */
 public final class BootableJarWithSbom {
 
@@ -38,9 +39,29 @@ public final class BootableJarWithSbom {
         return this;
     }
 
-    /** Continues with the WildFly installation in {@code wildfly.zip}, extracted when {@code verify()} runs. */
-    public SbomVerifier withExtractedWildflyZipSbomVerifier() {
-        return BootableJarSbomVerifier.extractedWildfly(wildflyZip, sbom.stack());
+    /**
+     * Also requires the SBOM of the bootable JAR to conform to the CycloneDX schema; see
+     * {@link WithSbom#withSchemaValidation()}. Off by default. It does not apply to the SBOM of the
+     * extracted WildFly; ask for it on that stage.
+     *
+     * @return this stage
+     */
+    public BootableJarWithSbom withSchemaValidation() {
+        sbom.withSchemaValidation();
+        return this;
+    }
+
+    /**
+     * Continues with the WildFly installation in {@code wildfly.zip}, extracted when {@code verify()} runs.
+     *
+     * @param sbomFile          where the SBOM is in the extracted installation, relative to its root; see
+     *                          {@link SbomVerifier#SbomVerifier(Path, Path, Collection)}
+     * @param excludedScanPaths the directories, relative to the extracted installation, that the scan for
+     *                          installed JARs skips; the complete list, see
+     *                          {@link SbomVerifier#SbomVerifier(Path, Path, Collection)}
+     */
+    public SbomVerifier withExtractedWildflyZipSbomVerifier(Path sbomFile, Collection<Path> excludedScanPaths) {
+        return BootableJarSbomVerifier.extractedWildfly(wildflyZip, sbom.stack(), sbomFile, excludedScanPaths);
     }
 
     /**

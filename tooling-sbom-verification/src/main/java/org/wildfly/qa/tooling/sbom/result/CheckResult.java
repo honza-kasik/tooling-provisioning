@@ -11,10 +11,10 @@ import java.util.Objects;
  * The result of a single SBOM check: the category of what was checked and a (possibly empty) list of issue
  * strings. An empty list means the check passed. Use {@link CheckResults} to create the known results.
  *
- * @param category short, stable label of the checked aspect, e.g. {@link CheckResults#SBOM}
+ * @param category what was checked, e.g. {@link CheckCategory#SBOM}
  * @param issues   what was found wrong; empty when the check passed
  */
-public record CheckResult(String category, List<String> issues) {
+public record CheckResult(CheckCategory category, List<String> issues) {
 
     public CheckResult {
         Objects.requireNonNull(category, "category");

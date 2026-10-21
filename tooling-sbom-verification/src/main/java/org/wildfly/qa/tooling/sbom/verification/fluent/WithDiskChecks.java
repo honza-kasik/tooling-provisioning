@@ -9,6 +9,7 @@ import org.cyclonedx.model.Component;
 import org.wildfly.channel.ChannelManifest;
 import org.wildfly.qa.tooling.sbom.component.ComponentKind;
 import org.wildfly.qa.tooling.sbom.component.ComponentUtils;
+import org.wildfly.qa.tooling.sbom.result.CheckCategory;
 import org.wildfly.qa.tooling.sbom.result.CheckResult;
 import org.wildfly.qa.tooling.sbom.verification.Context;
 import org.wildfly.qa.tooling.sbom.result.CheckResults;
@@ -18,6 +19,7 @@ import org.wildfly.qa.tooling.sbom.scanner.InstalledArtifact;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -44,32 +46,65 @@ import java.util.stream.Collectors;
 public final class WithDiskChecks {
 
     /**
-     * Maven artifacts that are installed under a fixed, unversioned filename.
+     * The default for {@link #withFatJarNames(Map)}: Maven artifacts that are installed under a fixed,
+     * unversioned filename.
      * Key: SBOM component {@code name}; value: path relative to the installation root.
      */
-    private static final Map<String, String> FAT_JAR_NAMES = Map.of(
+    public static final Map<String, String> DEFAULT_FAT_JAR_NAMES = Map.of(
             "wildfly-launcher", "bin/launcher.jar",
             "jboss-modules", "jboss-modules.jar");
 
     /**
-     * Filenames of assembled fat JARs represented in the SBOM only as {@code pkg:generic} entries. They are
-     * not reported as undeclared.
+     * The default for {@link #withGenericFatJars(Collection)}: assembled fat JARs that the SBOM declares as
+     * {@code pkg:generic} components, by their path relative to the installation root.
      */
-    private static final Set<String> GENERIC_FAT_JAR_FILENAMES = Set.of(
-            "jboss-cli-client.jar",
-            "jboss-client.jar",
-            "wildfly-elytron-tool.jar",
-            "launcher.jar");
+    public static final Set<Path> DEFAULT_GENERIC_FAT_JARS = Set.of(
+            Path.of("bin/client/jboss-cli-client.jar"),
+            Path.of("bin/client/jboss-client.jar"),
+            Path.of("bin/wildfly-elytron-tool.jar"));
 
     /** Stands in for the manifest of an installation that has none: it has no streams. */
     private static final ChannelManifest NO_MANIFEST = new ChannelManifest(null, null, null, List.of());
 
     private final Context context;
     private final List<Supplier<CheckResult>> checks;
+    private Map<String, String> fatJarNames = DEFAULT_FAT_JAR_NAMES;
+    private Set<Path> genericFatJars = DEFAULT_GENERIC_FAT_JARS;
 
     WithDiskChecks(Context context, List<Supplier<CheckResult>> parentChecks) {
         this.context = context;
         this.checks = new ArrayList<>(parentChecks);
+    }
+
+    /**
+     * Replaces {@link #DEFAULT_FAT_JAR_NAMES}: the Maven artifacts that are installed under a fixed,
+     * unversioned filename instead of {@code <artifactId>-<version>.jar}. The SBOM-versus-disk check looks
+     * for such an artifact at the given path, and the disk-versus-SBOM check accepts the file name of that
+     * path as declared. To add to the defaults, copy them into the map you pass.
+     *
+     * @param fatJarNames SBOM component {@code name} to path relative to the installation root
+     * @return this stage
+     */
+    public WithDiskChecks withFatJarNames(Map<String, String> fatJarNames) {
+        this.fatJarNames = Map.copyOf(Objects.requireNonNull(fatJarNames, "fatJarNames"));
+        return this;
+    }
+
+    /**
+     * Replaces {@link #DEFAULT_GENERIC_FAT_JARS}: the assembled fat JARs that the SBOM declares as
+     * {@code pkg:generic} components instead of Maven artifacts. The disk-versus-SBOM check accepts a JAR at
+     * one of these paths only if the SBOM has a {@code pkg:generic} component with an occurrence at exactly
+     * that path; otherwise the JAR is reported as undeclared, like any other. A listed path that is not on
+     * disk is ignored. To add to the defaults, copy them into the collection you pass.
+     *
+     * @param paths the JARs, relative to the installation root
+     * @return this stage
+     */
+    public WithDiskChecks withGenericFatJars(Collection<Path> paths) {
+        this.genericFatJars = Objects.requireNonNull(paths, "paths").stream()
+                .map(Path::normalize)
+                .collect(Collectors.toUnmodifiableSet());
+        return this;
     }
 
     /**
@@ -111,73 +146,97 @@ public final class WithDiskChecks {
         return stack;
     }
 
-    /** Fails for every SBOM component whose JAR (or native library directory) is not on disk. */
+    /**
+     * Fails for every SBOM component whose JAR, native library directory or other file is not on disk.
+     * A JAR is looked up by its file name in the scan, and every occurrence the SBOM declares for a
+     * component (Maven or {@code pkg:generic}) must exist, so a component with several locations is checked
+     * at all of them.
+     */
     private CheckResult checkSbomVsDisk() {
-        Optional<List<Component>> components = mavenComponents();
-        if (components.isEmpty()) {
-            return CheckResults.unavailable(CheckResults.SBOM_VS_DISK, "the SBOM");
+        Optional<Bom> bom = context.bom().get();
+        if (bom.isEmpty()) {
+            return CheckResults.unavailable(CheckCategory.SBOM_VS_DISK, "the SBOM");
         }
+        List<Component> mavenComponents = ComponentUtils.collectMavenComponents(bom.get().getComponents());
         Optional<Set<String>> diskFileNames = diskFileNames();
         if (diskFileNames.isEmpty()) {
-            return CheckResults.unavailable(CheckResults.SBOM_VS_DISK, "the JAR scan");
+            return CheckResults.unavailable(CheckCategory.SBOM_VS_DISK, "the JAR scan");
         }
         Path root = context.root();
         List<String> missing = new ArrayList<>();
-        for (Component c : components.get()) {
+        for (Component c : mavenComponents) {
             switch (ComponentUtils.componentKind(c)) {
                 case POM_DERIVED -> { /* nothing on disk to check */ }
-                case NATIVE_LIB -> ComponentUtils.nativeLibDir(c).ifPresent(libDir -> {
+                case NATIVE_LIB -> ComponentUtils.nativeLibDirs(c).forEach(libDir -> {
                     if (!Files.isDirectory(root.resolve(libDir))) {
                         missing.add(c.getPurl() + " [native lib dir missing: " + libDir + "]");
                     }
                 });
-                case REGULAR_JAR -> {
-                    if (ComponentUtils.isNonJarType(c)) {
-                        continue;
-                    }
-                    String fatJar = FAT_JAR_NAMES.get(c.getName());
-                    if (fatJar != null) {
-                        if (!Files.exists(root.resolve(fatJar))) {
-                            missing.add(c.getPurl() + " [expected: " + fatJar + "]");
-                        }
-                        continue;
-                    }
-                    String expected = ComponentUtils.expectedJarFileName(c);
-                    if (!diskFileNames.get().contains(expected)) {
+                case OTHER_FILE -> checkOccurrences(c, root, null, missing);
+                case JAR -> {
+                    String fatJar = fatJarNames.get(c.getName());
+                    String expected = fatJar != null ? fatJar : ComponentUtils.expectedJarFileName(c);
+                    boolean found = fatJar != null
+                            ? Files.exists(root.resolve(fatJar))
+                            : diskFileNames.get().contains(expected);
+                    if (!found) {
                         missing.add(c.getPurl() + " [expected: " + expected + "]");
                     }
+                    // a JAR that was not found is already reported; do not report its occurrence again
+                    checkOccurrences(c, root, found ? null : Path.of(expected).getFileName().toString(), missing);
                 }
             }
+        }
+        for (Component c : ComponentUtils.collectGenericComponents(bom.get().getComponents())) {
+            checkOccurrences(c, root, null, missing);
         }
         return CheckResults.sbomVsDisk(missing);
     }
 
+    /**
+     * Adds an issue for every distinct occurrence of the component that does not exist under the root.
+     *
+     * @param alreadyReported the file name of a location that was reported by another check, or {@code null}
+     */
+    private static void checkOccurrences(Component c, Path root, String alreadyReported, List<String> missing) {
+        ComponentUtils.occurrenceLocations(c).stream().distinct()
+                .filter(location -> !Path.of(location).getFileName().toString().equals(alreadyReported))
+                .filter(location -> !Files.exists(root.resolve(location)))
+                .forEach(location -> missing.add(c.getPurl() + " [file missing: " + location + "]"));
+    }
+
     /** Fails for every JAR on disk that the SBOM does not declare, once per file name. */
     private CheckResult checkDiskVsSbom() {
-        Optional<List<Component>> components = mavenComponents();
-        if (components.isEmpty()) {
-            return CheckResults.unavailable(CheckResults.DISK_VS_SBOM, "the SBOM");
+        Optional<Bom> optionalBom = context.bom().get();
+        if (optionalBom.isEmpty()) {
+            return CheckResults.unavailable(CheckCategory.DISK_VS_SBOM, "the SBOM");
         }
+        Bom bom = optionalBom.get();
+        List<Component> mavenComponents = ComponentUtils.collectMavenComponents(bom.getComponents());
         Optional<Context.Scan> scan = context.scan().get();
         if (scan.isEmpty()) {
-            return CheckResults.unavailable(CheckResults.DISK_VS_SBOM, "the JAR scan");
+            return CheckResults.unavailable(CheckCategory.DISK_VS_SBOM, "the JAR scan");
         }
-        Set<String> sbomFileNames = components.get().stream()
+        Set<String> sbomFileNames = mavenComponents.stream()
                 .filter(c -> ComponentUtils.componentKind(c) != ComponentKind.POM_DERIVED)
-                .filter(c -> !ComponentUtils.isNonJarType(c))
+                .filter(c -> ComponentUtils.componentKind(c) != ComponentKind.OTHER_FILE)
                 .map(c -> {
-                    String fatJar = FAT_JAR_NAMES.get(c.getName());
+                    String fatJar = fatJarNames.get(c.getName());
                     return fatJar != null
                             ? Path.of(fatJar).getFileName().toString()
                             : ComponentUtils.expectedJarFileName(c);
                 })
                 .collect(Collectors.toSet());
 
+        Set<Path> declaredGeneric = new HashSet<>(ComponentUtils.genericLocations(bom.getComponents()));
+        declaredGeneric.retainAll(genericFatJars);
+        Path root = context.root().toAbsolutePath().normalize();
+
         Set<String> reported = new HashSet<>();
         List<String> undeclared = scan.get().artifacts().stream()
+                .filter(a -> !sbomFileNames.contains(a.jarFileName()))
+                .filter(a -> !declaredGeneric.contains(root.relativize(Path.of(a.jarPath()).toAbsolutePath().normalize())))
                 .map(InstalledArtifact::jarFileName)
-                .filter(name -> !sbomFileNames.contains(name))
-                .filter(name -> !GENERIC_FAT_JAR_FILENAMES.contains(name))
                 .filter(reported::add)
                 .toList();
         return CheckResults.diskVsSbom(undeclared);
@@ -187,17 +246,17 @@ public final class WithDiskChecks {
     private CheckResult checkShaded(Predicate<ShadedResult> predicate, String errorMessage) {
         Optional<Bom> bom = context.bom().get();
         if (bom.isEmpty()) {
-            return CheckResults.unavailable(CheckResults.SHADED, "the SBOM");
+            return CheckResults.unavailable(CheckCategory.SHADED, "the SBOM");
         }
         Optional<Set<String>> diskFileNames = diskFileNames();
         if (diskFileNames.isEmpty()) {
-            return CheckResults.unavailable(CheckResults.SHADED, "the JAR scan");
+            return CheckResults.unavailable(CheckCategory.SHADED, "the JAR scan");
         }
         ChannelManifest manifest = NO_MANIFEST;
         if (Files.exists(context.manifestFile())) {
             Optional<ChannelManifest> parsed = context.manifest().get();
             if (parsed.isEmpty()) {
-                return CheckResults.unavailable(CheckResults.SHADED, "the manifest");
+                return CheckResults.unavailable(CheckCategory.SHADED, "the manifest");
             }
             manifest = parsed.get();
         }
@@ -209,19 +268,19 @@ public final class WithDiskChecks {
                     + e.getClass().getSimpleName() + ": " + e.getMessage() + ")");
         }
         return accepted
-                ? CheckResults.passed(CheckResults.SHADED)
+                ? CheckResults.passed(CheckCategory.SHADED)
                 : CheckResults.shadedCheckFailed(errorMessage);
     }
 
     /** The POM-derived components that no JAR on disk and no manifest stream accounts for, by parent purl. */
-    private static ShadedResult collectShaded(Bom bom, Set<String> diskFileNames, ChannelManifest manifest) {
+    private ShadedResult collectShaded(Bom bom, Set<String> diskFileNames, ChannelManifest manifest) {
         Map<String, String> parentIndex = ComponentUtils.parentIndex(bom.getComponents());
         Map<String, List<String>> grouped = new TreeMap<>();
         ComponentUtils.collectMavenComponents(bom.getComponents()).stream()
                 .filter(c -> ComponentUtils.componentKind(c) == ComponentKind.POM_DERIVED)
                 .filter(c -> !diskFileNames.contains(ComponentUtils.expectedJarFileName(c)))
                 .filter(c -> {
-                    String fatJar = FAT_JAR_NAMES.get(c.getName());
+                    String fatJar = fatJarNames.get(c.getName());
                     return fatJar == null || !diskFileNames.contains(Path.of(fatJar).getFileName().toString());
                 })
                 .filter(c -> manifest.findStreamFor(c.getGroup(), c.getName())
@@ -233,11 +292,6 @@ public final class WithDiskChecks {
                         .add(c.getPurl()));
         grouped.values().forEach(Collections::sort);
         return new ShadedResult(Collections.unmodifiableMap(grouped));
-    }
-
-    /** @return the maven components of the SBOM, or empty if the SBOM is unavailable */
-    private Optional<List<Component>> mavenComponents() {
-        return context.bom().get().map(bom -> ComponentUtils.collectMavenComponents(bom.getComponents()));
     }
 
     /** @return the file names of the JARs on disk, or empty if the scan is unavailable */

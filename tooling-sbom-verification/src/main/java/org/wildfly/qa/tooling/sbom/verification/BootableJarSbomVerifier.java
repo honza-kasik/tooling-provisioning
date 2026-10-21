@@ -4,6 +4,7 @@
  */
 package org.wildfly.qa.tooling.sbom.verification;
 
+import org.wildfly.qa.tooling.sbom.result.CheckCategory;
 import org.wildfly.qa.tooling.sbom.result.CheckResult;
 import org.wildfly.qa.tooling.sbom.result.CheckResults;
 import org.wildfly.qa.tooling.sbom.verification.fluent.BootableJarWithSbom;
@@ -14,6 +15,7 @@ import org.wildfly.qa.tooling.sbom.verification.fluent.WithoutSbom;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
@@ -24,7 +26,8 @@ import java.util.function.Supplier;
  * outer level is stated first, then the chain continues with a verifier of the extracted installation:
  * <pre>
  *     new BootableJarSbomVerifier(root).withSbom().withBomCheck(...)
- *             .withExtractedWildflyZipSbomVerifier().withSbom().withManifest().withDiskChecks().verify();
+ *             .withExtractedWildflyZipSbomVerifier(Path.of("sbom.cdx.json.gz"), InstallationScanner.DEFAULT_EXCLUDED)
+ *             .withSbom().withManifest().withDiskChecks().verify();
  *     new BootableJarSbomVerifier(root).withoutSbom().verify();
  * </pre>
  *
@@ -38,6 +41,9 @@ import java.util.function.Supplier;
  */
 public final class BootableJarSbomVerifier {
 
+    /** The SBOM of a bootable JAR, relative to {@code META-INF/sbom}. */
+    private static final Path OUTER_SBOM_FILE = Path.of("sbom.cdx.json");
+
     private final Context context;
     private final Path wildflyZip;
 
@@ -47,7 +53,8 @@ public final class BootableJarSbomVerifier {
      */
     public BootableJarSbomVerifier(Path bootableRoot) {
         Objects.requireNonNull(bootableRoot, "bootableRoot");
-        this.context = new Context(bootableRoot.resolve("META-INF").resolve("sbom"));
+        // the outer SBOM directory is never scanned for JARs, so nothing is excluded
+        this.context = new Context(bootableRoot.resolve("META-INF").resolve("sbom"), OUTER_SBOM_FILE, List.of());
         this.wildflyZip = bootableRoot.resolve("wildfly.zip");
     }
 
@@ -72,15 +79,21 @@ public final class BootableJarSbomVerifier {
         Path file = context.root().resolve(".installation").resolve("manifest.yaml");
         return Files.exists(file)
                 ? CheckResults.manifestUnexpected(file)
-                : CheckResults.passed(CheckResults.MANIFEST);
+                : CheckResults.passed(CheckCategory.MANIFEST);
     }
 
     /**
      * Continues the chain with a verifier of the WildFly installation in {@code wildfly.zip}. The
      * {@code outerChecks} run first, then the extraction, then whatever the returned verifier adds.
+     *
+     * @param sbomFile          where the SBOM is in the extracted installation; see
+     *                          {@link SbomVerifier#SbomVerifier(Path, Path, Collection)}
+     * @param excludedScanPaths what the scan of the extracted installation skips; see
+     *                          {@link SbomVerifier#SbomVerifier(Path, Path, Collection)}
      */
-    public static SbomVerifier extractedWildfly(Path wildflyZip, List<Supplier<CheckResult>> outerChecks) {
-        Context inner = Context.extractedFrom(wildflyZip);
+    public static SbomVerifier extractedWildfly(Path wildflyZip, List<Supplier<CheckResult>> outerChecks,
+                                                Path sbomFile, Collection<Path> excludedScanPaths) {
+        Context inner = Context.extractedFrom(wildflyZip, sbomFile, excludedScanPaths);
         List<Supplier<CheckResult>> checks = new ArrayList<>(outerChecks);
         checks.add(() -> checkExtracted(wildflyZip, inner));
         return new SbomVerifier(inner, checks);
@@ -90,6 +103,6 @@ public final class BootableJarSbomVerifier {
     private static CheckResult checkExtracted(Path wildflyZip, Context inner) {
         return inner.rootError()
                 .map(error -> CheckResults.extractionFailed(wildflyZip, error))
-                .orElseGet(() -> CheckResults.passed(CheckResults.WILDFLY_ZIP));
+                .orElseGet(() -> CheckResults.passed(CheckCategory.WILDFLY_ZIP));
     }
 }

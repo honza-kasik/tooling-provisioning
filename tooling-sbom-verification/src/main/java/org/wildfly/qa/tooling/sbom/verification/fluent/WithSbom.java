@@ -4,9 +4,12 @@
  */
 package org.wildfly.qa.tooling.sbom.verification.fluent;
 
+import org.cyclonedx.exception.ParseException;
 import org.cyclonedx.model.Bom;
+import org.wildfly.qa.tooling.sbom.result.CheckCategory;
 import org.wildfly.qa.tooling.sbom.result.CheckResult;
 import org.wildfly.qa.tooling.sbom.verification.Context;
+import org.wildfly.qa.tooling.sbom.verification.Lazy;
 import org.wildfly.qa.tooling.sbom.result.CheckResults;
 
 import java.nio.file.Path;
@@ -52,6 +55,19 @@ public final class WithSbom {
         return this;
     }
 
+    /**
+     * Also requires the SBOM to conform to the CycloneDX JSON schema of the version it declares. Off by
+     * default: the SBOM only has to parse, which accepts documents that strict consumers reject. A
+     * schema-invalid SBOM is still parsed, so the other checks keep running. The failure lists the message of
+     * every schema error.
+     *
+     * @return this stage
+     */
+    public WithSbom withSchemaValidation() {
+        checks.add(this::checkSchema);
+        return this;
+    }
+
     /** Expects the installation to have a valid manifest. */
     public WithManifest withManifest() {
         return new WithManifest(context, stack());
@@ -80,7 +96,25 @@ public final class WithSbom {
 
     /** Fails if the SBOM is missing, cannot be read or is not valid CycloneDX. */
     private CheckResult checkSbomValid() {
-        return sbomFailure().orElseGet(() -> CheckResults.passed(CheckResults.SBOM));
+        return sbomFailure().orElseGet(() -> CheckResults.passed(CheckCategory.SBOM));
+    }
+
+    /** Fails like {@link #checkSbomValid()}, or if the SBOM does not conform to the schema. */
+    private CheckResult checkSchema() {
+        Optional<CheckResult> failure = sbomFailure();
+        if (failure.isPresent()) {
+            return failure.get();
+        }
+        Path file = context.sbomFile().orElseThrow();
+        Lazy<List<ParseException>> schemaErrors = context.schemaErrors();
+        return schemaErrors.error()
+                .map(error -> CheckResults.sbomInvalid(file, error))
+                .orElseGet(() -> {
+                    List<ParseException> errors = schemaErrors.get().orElseThrow();
+                    return errors.isEmpty()
+                            ? CheckResults.passed(CheckCategory.SBOM)
+                            : CheckResults.sbomSchemaInvalid(file, errors);
+                });
     }
 
     /** Fails like {@link #checkSbomValid()}, or if the predicate rejects the SBOM. */
@@ -97,7 +131,7 @@ public final class WithSbom {
                     + e.getClass().getSimpleName() + ": " + e.getMessage() + ")");
         }
         return accepted
-                ? CheckResults.passed(CheckResults.SBOM)
+                ? CheckResults.passed(CheckCategory.SBOM)
                 : CheckResults.sbomCheckFailed(errorMessage);
     }
 
@@ -105,7 +139,7 @@ public final class WithSbom {
     private Optional<CheckResult> sbomFailure() {
         Optional<Path> file = context.sbomFile();
         if (file.isEmpty()) {
-            return Optional.of(CheckResults.sbomMissing(context.root()));
+            return Optional.of(CheckResults.sbomMissing(context.sbomPath()));
         }
         return context.bom().error().map(error -> CheckResults.sbomInvalid(file.get(), error));
     }

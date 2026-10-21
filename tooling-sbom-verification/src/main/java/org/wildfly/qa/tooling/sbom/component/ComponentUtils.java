@@ -10,12 +10,14 @@ import org.cyclonedx.model.component.evidence.Identity;
 import org.cyclonedx.model.component.evidence.Method;
 import org.cyclonedx.model.component.evidence.Occurrence;
 
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -34,45 +36,52 @@ public final class ComponentUtils {
      *       occurrences; never installed as a standalone file.</li>
      *   <li>{@link ComponentKind#NATIVE_LIB} — all occurrences end with {@code /lib}; installed
      *       as a shared library.</li>
-     *   <li>{@link ComponentKind#REGULAR_JAR} — everything else.</li>
+     *   <li>{@link ComponentKind#OTHER_FILE} — the purl declares a {@code type} other than {@code jar}
+     *       (e.g. {@code type=txt}); installed as a plain file.</li>
+     *   <li>{@link ComponentKind#JAR} — everything else.</li>
      * </ul>
      */
     public static ComponentKind componentKind(Component c) {
         Evidence ev = c.getEvidence();
-        if (ev == null) return ComponentKind.REGULAR_JAR;
-
-        List<Occurrence> occurrences = ev.getOccurrences();
-        if (occurrences != null && !occurrences.isEmpty()) {
-            boolean allLib = occurrences.stream()
-                    .allMatch(o -> o.getLocation() != null && o.getLocation().endsWith("/lib"));
-            return allLib ? ComponentKind.NATIVE_LIB : ComponentKind.REGULAR_JAR;
+        if (ev != null) {
+            List<Occurrence> occurrences = ev.getOccurrences();
+            if (occurrences != null && !occurrences.isEmpty()) {
+                boolean allLib = occurrences.stream()
+                        .allMatch(o -> o.getLocation() != null && o.getLocation().endsWith("/lib"));
+                if (allLib) return ComponentKind.NATIVE_LIB;
+            } else if (isPomDerived(ev)) {
+                return ComponentKind.POM_DERIVED;
+            }
         }
+        return hasNonJarType(c) ? ComponentKind.OTHER_FILE : ComponentKind.JAR;
+    }
 
+    private static boolean isPomDerived(Evidence ev) {
         List<Identity> identities = ev.getIdentities();
-        if (identities != null && !identities.isEmpty()) {
-            boolean allPomDerived = identities.stream().allMatch(id -> {
-                List<Method> methods = id.getMethods();
-                if (methods == null || methods.isEmpty()) return false;
-                return methods.stream().allMatch(m ->
-                        m.getTechnique() == Method.Technique.MANIFEST_ANALYSIS
-                                && "maven-pom-analysis".equals(m.getValue()));
-            });
-            if (allPomDerived) return ComponentKind.POM_DERIVED;
-        }
-        return ComponentKind.REGULAR_JAR;
+        if (identities == null || identities.isEmpty()) return false;
+        return identities.stream().allMatch(id -> {
+            List<Method> methods = id.getMethods();
+            if (methods == null || methods.isEmpty()) return false;
+            return methods.stream().allMatch(m ->
+                    m.getTechnique() == Method.Technique.MANIFEST_ANALYSIS
+                            && "maven-pom-analysis".equals(m.getValue()));
+        });
     }
 
     /**
-     * Returns the relative path of the native lib directory from the first matching
-     * occurrence, or an empty {@link Optional} if none is found.
+     * Returns the relative paths of the native lib directories of a {@link ComponentKind#NATIVE_LIB}
+     * component: the location of every occurrence that ends with {@code /lib}, without duplicates and in
+     * the order of the SBOM. The directory is where the installation keeps the platform-specific native
+     * libraries of the component, for example {@code modules/.../openssl/main/lib}.
      */
-    public static Optional<String> nativeLibDir(Component c) {
+    public static List<String> nativeLibDirs(Component c) {
         Evidence ev = c.getEvidence();
-        if (ev == null || ev.getOccurrences() == null) return Optional.empty();
+        if (ev == null || ev.getOccurrences() == null) return List.of();
         return ev.getOccurrences().stream()
                 .map(Occurrence::getLocation)
                 .filter(loc -> loc != null && loc.endsWith("/lib"))
-                .findFirst();
+                .distinct()
+                .toList();
     }
 
     /**
@@ -91,7 +100,7 @@ public final class ComponentUtils {
      * Returns {@code true} when the purl declares a {@code type} qualifier that is not
      * {@code jar} (e.g. {@code type=txt}).
      */
-    public static boolean isNonJarType(Component c) {
+    private static boolean hasNonJarType(Component c) {
         String purl = c.getPurl();
         if (purl == null) return false;
         int q = purl.indexOf('?');
@@ -105,6 +114,35 @@ public final class ComponentUtils {
         if (components == null) return Stream.empty();
         return components.stream()
                 .flatMap(c -> Stream.concat(Stream.of(c), collectAllComponents(c.getComponents())));
+    }
+
+    /**
+     * The locations of the {@code pkg:generic} components of the tree: the normalized, root-relative path of
+     * every occurrence. A generic component is a file of the product that is not a Maven artifact, such as an
+     * assembled fat JAR.
+     */
+    public static Set<Path> genericLocations(List<Component> components) {
+        return collectGenericComponents(components).stream()
+                .flatMap(c -> occurrenceLocations(c).stream())
+                .map(loc -> Path.of(loc).normalize())
+                .collect(Collectors.toSet());
+    }
+
+    /** Recursively collects the {@code pkg:generic} components from the SBOM component tree. */
+    public static List<Component> collectGenericComponents(List<Component> components) {
+        return collectAllComponents(components)
+                .filter(c -> c.getPurl() != null && c.getPurl().startsWith("pkg:generic/"))
+                .toList();
+    }
+
+    /** @return the location of every occurrence of the component, in the order of the SBOM; may be empty */
+    public static List<String> occurrenceLocations(Component c) {
+        Evidence ev = c.getEvidence();
+        if (ev == null || ev.getOccurrences() == null) return List.of();
+        return ev.getOccurrences().stream()
+                .map(Occurrence::getLocation)
+                .filter(loc -> loc != null && !loc.isBlank())
+                .toList();
     }
 
     /** Recursively collects all maven-coordinate components from the SBOM component tree. */

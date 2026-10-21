@@ -15,7 +15,7 @@ Both are in `org.wildfly.qa.tooling.sbom.verification`. The steps they lead to (
 
 [,java]
 ----
-List<CheckResult> results = new SbomVerifier(serverHome)
+List<CheckResult> results = new SbomVerifier(serverHome, Path.of("sbom.cdx.json.gz"), InstallationScanner.DEFAULT_EXCLUDED)
         .withSbom()
             .withBomCheck(bom -> bom.getMetadata().getComponent().getCpe() != null,
                     "metadata.component.cpe is missing")
@@ -37,19 +37,28 @@ Each step offers only what makes sense after it, so an invalid combination does 
 
 [source]
 ----
-SbomVerifier(root)
+SbomVerifier(root, sbomFile, excludedScanPaths)
  ├─ withoutSbom()                       -> verify()
  └─ withSbom()                          -> withBomCheck(predicate, message)*
+                                           withSchemaValidation()
      ├─ verify()
      ├─ withoutManifest()               -> withDiskChecks() | verify()
      └─ withManifest()                  -> withManifestCheck(predicate, message)*
                                            withSbomMatchingManifest()
          ├─ verify()
-         └─ withDiskChecks()            -> withShadedCheck(predicate, message)*
+         └─ withDiskChecks()            -> withFatJarNames(map)
+                                           withGenericFatJars(paths)
+                                           withShadedCheck(predicate, message)*
                                            verify()
 ----
 
 `*` can be repeated. The steps are mutable: `withBomCheck(...)` adds a check and returns the same step.
+
+=== Where the SBOM is
+
+The path of the SBOM is an argument, so a test says which file it expects: WildFly builds ship `sbom.cdx.json.gz`, other products may ship a plain `sbom.cdx.json` or put it elsewhere. The path is relative to the root, or absolute, and nothing is auto-detected. The file is gunzipped when its name ends in `.gz`, otherwise it is read as it is. `withSbom()` fails with `SBOM not found: <path>` when there is no file there, and `withoutSbom()` fails when there is one.
+
+For a bootable JAR the SBOM of the bootable JAR itself is always `META-INF/sbom/sbom.cdx.json`; the path you pass to `withExtractedWildflyZipSbomVerifier` is the SBOM inside `wildfly.zip`.
 
 === Checks
 
@@ -64,12 +73,12 @@ Each step adds an implicit check when you leave it (move to the next step or cal
 |
 
 | `withoutSbom()`
-| No `sbom.cdx.json[.gz]` in the root (`SBOM`)
+| Nothing at the SBOM path (`SBOM`)
 |
 
 | `withSbom()`
 | The SBOM exists and is valid CycloneDX JSON, plain or gzipped (`SBOM`)
-| `withBomCheck(Predicate<Bom>, message)`
+| `withBomCheck(Predicate<Bom>, message)`, `withSchemaValidation()` (see below)
 
 | `withoutManifest()`
 | No `.installation/manifest.yaml` (`Manifest`)
@@ -81,17 +90,65 @@ Each step adds an implicit check when you leave it (move to the next step or cal
 
 | `withDiskChecks()`
 | Every SBOM component is on disk (`SBOM vs disk`), and every JAR on disk is in the SBOM (`Disk vs SBOM`)
-| `withShadedCheck(Predicate<ShadedResult>, message)` (`Shaded artifacts`)
+| `withShadedCheck(Predicate<ShadedResult>, message)` (`Shaded artifacts`); `withFatJarNames(...)` and `withGenericFatJars(...)` tune the two disk checks (see below)
 |===
 
 A predicate that returns `false` fails its check with your message. A predicate that throws also fails the check; it does not abort the verification.
 
 If an input of a check is unavailable (for example the SBOM is missing), the check reports `not checked: ... is unavailable` and the cause is reported once by the check that owns it. A single missing file does not produce an exception.
 
+=== Schema validation
+
+The implicit SBOM check only requires the file to parse, and the parser is lenient. `withSchemaValidation()` also requires the SBOM to conform to the CycloneDX JSON schema of the version it declares. It is off by default, because strict consumers (for example Dependency-Track) reject documents that the parser accepts.
+
+A schema-invalid SBOM is still parsed, so the other checks keep running. The failure is reported in the `SBOM` category: the first issue names the file and the number of errors, and every other issue is the message of one schema error. A real SBOM that repeats one mistake in every component therefore gives thousands of issues:
+
+[source]
+----
+SBOM
+  .../sbom.cdx.json does not conform to the CycloneDX schema: 2577 errors
+  $.components[0].components[0].evidence.identity: must be valid to one and only one schema, but 0 are valid
+  $.components[0].components[0].evidence.identity[0].methods[0]: required property 'confidence' not found
+  ...
+----
+
+Schema validation on a bootable JAR (`BootableJarSbomVerifier.withSbom().withSchemaValidation()`) applies to the SBOM of the bootable JAR only. Ask for it again on the `withSbom()` step of the extracted WildFly if you want that SBOM validated too.
+
 === What the disk checks do
 
-* `SBOM vs disk`: for every Maven component of the SBOM, the JAR is on disk. Shaded (POM-derived) components are not checked, because they are bundled inside a parent JAR. A native library is checked by its `lib/` directory, a non-JAR type (e.g. `txt`) is skipped, and the fat JARs that are installed under a fixed name (`jboss-modules`, `wildfly-launcher`, ...) are looked up at that path. `pkg:npm` components are ignored.
+* `SBOM vs disk`: for every Maven component of the SBOM, the JAR is on disk. On top of that, every occurrence location that the SBOM declares for a component, Maven or `pkg:generic` (the assembled fat JARs), must exist, so a component with several locations is checked at all of them. A JAR that is not found is reported once, as `[expected: ...]`. Shaded (POM-derived) components are not checked, because they are bundled inside a parent JAR. A native library (a component whose occurrences all end with `/lib`, for example the OpenSSL or Netty native artifacts) is checked by those `lib/` directories, every one of them, a component with a non-JAR `type` in its purl (e.g. `type=txt`, the `version.txt` of the feature pack) is checked as a plain file at the location of its first occurrence, and is skipped when the SBOM gives no location, and the fat JARs that are installed under a fixed name (`jboss-modules`, `wildfly-launcher`, ...) are looked up at that path. `pkg:npm` components are ignored.
 * `Disk vs SBOM`: for every JAR on disk, there is a component in the SBOM.
+
+Two lists of special cases are built in, and you can replace either. Each call *replaces* the default (it does not add to it); to extend a default, copy it into what you pass.
+
+* `withFatJarNames(Map<String, String>)`: Maven artifacts that are installed under a fixed, unversioned name. The key is the SBOM component name, the value the path relative to the root. `SBOM vs disk` looks for the artifact at that path and `Disk vs SBOM` accepts the file name. Default: `WithDiskChecks.DEFAULT_FAT_JAR_NAMES` (`wildfly-launcher` is `bin/launcher.jar`, `jboss-modules` is `jboss-modules.jar`).
+* `withGenericFatJars(Collection<Path>)`: assembled fat JARs that the SBOM declares as `pkg:generic` components instead of Maven artifacts, by path relative to the root. The exemption is backed by the SBOM: `Disk vs SBOM` accepts a JAR at a listed path only if the SBOM has a `pkg:generic` component with an occurrence at exactly that path. A listed JAR the SBOM does not declare that way, or a JAR of the same name in another directory, is reported as undeclared like any other. Default: `WithDiskChecks.DEFAULT_GENERIC_FAT_JARS` (`bin/client/jboss-cli-client.jar`, `bin/client/jboss-client.jar`, `bin/wildfly-elytron-tool.jar`).
+
+[source,java]
+----
+Map<String, String> fatJars = new HashMap<>(WithDiskChecks.DEFAULT_FAT_JAR_NAMES);
+fatJars.put("my-launcher", "bin/my-launcher.jar");
+
+new SbomVerifier(root, Path.of("sbom.cdx.json.gz"), InstallationScanner.DEFAULT_EXCLUDED)
+        .withSbom().withManifest().withDiskChecks()
+        .withFatJarNames(fatJars)
+        .verify();
+----
+
+Both checks, and the `Installed JARs` check, work on one scan of the installation tree. What the scan skips is a required argument of the constructor, so every caller decides it. The list is complete: it replaces any default. `InstallationScanner.DEFAULT_EXCLUDED` is `.installation/`, which is Prospero's cache and not part of the runtime installation; pass it to skip only that, or add to it:
+
+[source,java]
+----
+List<Path> excluded = new ArrayList<>(InstallationScanner.DEFAULT_EXCLUDED);
+excluded.add(Path.of("docs"));
+excluded.add(Path.of("standalone/tmp"));
+
+new SbomVerifier(root, Path.of("sbom.cdx.json.gz"), excluded)
+        .withSbom().withManifest().withDiskChecks()
+        .verify();
+----
+
+The paths are relative to the root, and everything under them is skipped. An absolute path is used as it is, and a path that does not exist excludes nothing. The effect on the checks follows from that: a JAR under an excluded path is not required to be in the SBOM, and an SBOM component whose JAR is only there is reported as missing. If you pass an empty list, `.installation/` is scanned, and its JARs are reported by `Disk vs SBOM`. For a bootable JAR the list is the argument of `withExtractedWildflyZipSbomVerifier(...)`.
 
 === Shaded artifacts
 
@@ -118,7 +175,7 @@ List<CheckResult> results = new BootableJarSbomVerifier(bootableRoot)
         .withSbom()
             .withBomCheck(bom -> bom.getMetadata().getComponent().getCpe() != null,
                     "metadata.component.cpe is missing")
-        .withExtractedWildflyZipSbomVerifier()      // continues with a normal SbomVerifier chain
+        .withExtractedWildflyZipSbomVerifier(Path.of("sbom.cdx.json.gz"), InstallationScanner.DEFAULT_EXCLUDED) // continues with a normal SbomVerifier chain
             .withSbom()
             .withManifest()
                 .withSbomMatchingManifest()
@@ -127,11 +184,11 @@ List<CheckResult> results = new BootableJarSbomVerifier(bootableRoot)
 ----
 
 * The outer root is `META-INF/sbom`. It is not an installation, so the base check is that it has *no* `.installation/manifest.yaml`.
-* `withSbom()` offers `withBomCheck(...)`, `withExtractedWildflyZipSbomVerifier()` and `verify()`. The verifier returned by `withExtractedWildflyZipSbomVerifier()` is the `SbomVerifier` chain described above, applied to the installation inside `wildfly.zip`; its results follow those of the outer level.
+* `withSbom()` offers `withBomCheck(...)`, `withSchemaValidation()`, `withExtractedWildflyZipSbomVerifier(sbomFile, excludedScanPaths)` and `verify()`. The verifier returned by `withExtractedWildflyZipSbomVerifier(...)` is the `SbomVerifier` chain described above, applied to the installation inside `wildfly.zip`; its results follow those of the outer level.
 * `withoutSbom()` offers only `verify()`. Without an outer SBOM there is nothing to verify `wildfly.zip` against, so the chain ends there.
 * `wildfly.zip` is extracted to a temporary directory when `verify()` runs and the directory is deleted afterwards, also when a check fails. Zip entries that would escape the directory are rejected. If `wildfly.zip` is missing or cannot be extracted, the `wildfly.zip` check fails once and the checks that need the installation report `not checked`.
 * A chain that extracts `wildfly.zip` can be verified once. Create a new verifier to verify again.
 
 == Results
 
-`CheckResult` is a record `(String category, List<String> issues)` with `passed()`. The categories are the constants of `CheckResults`: `SBOM`, `Manifest`, `Installed JARs`, `wildfly.zip`, `SBOM vs disk`, `Disk vs SBOM`, `SBOM vs manifest` and `Shaded artifacts`. Results are returned in the order the checks ran, so a category can appear more than once (the outer and the inner SBOM of a bootable JAR).
+`CheckResult` is a record `(CheckCategory category, List<String> issues)` with `passed()`. `CheckCategory` is an enum whose `toString()` is the label shown in reports: `SBOM` (`SBOM`), `MANIFEST` (`Manifest`), `INSTALLED_JARS` (`Installed JARs`), `WILDFLY_ZIP` (`wildfly.zip`), `SBOM_VS_DISK` (`SBOM vs disk`), `DISK_VS_SBOM` (`Disk vs SBOM`), `SBOM_VS_MANIFEST` (`SBOM vs manifest`) and `SHADED` (`Shaded artifacts`). Results are returned in the order the checks ran, so a category can appear more than once (the outer and the inner SBOM of a bootable JAR).

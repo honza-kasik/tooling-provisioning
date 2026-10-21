@@ -9,6 +9,7 @@ import org.cyclonedx.model.Component;
 import org.wildfly.channel.ChannelManifest;
 import org.wildfly.qa.tooling.sbom.component.ComponentKind;
 import org.wildfly.qa.tooling.sbom.component.ComponentUtils;
+import org.wildfly.qa.tooling.sbom.result.CheckCategory;
 import org.wildfly.qa.tooling.sbom.result.CheckResult;
 import org.wildfly.qa.tooling.sbom.verification.Context;
 import org.wildfly.qa.tooling.sbom.result.CheckResults;
@@ -95,7 +96,7 @@ public final class WithManifest {
 
     /** Fails if the manifest is missing, cannot be read or cannot be parsed as a channel manifest. */
     private CheckResult checkManifestPresent() {
-        return manifestFailure().orElseGet(() -> CheckResults.passed(CheckResults.MANIFEST));
+        return manifestFailure().orElseGet(() -> CheckResults.passed(CheckCategory.MANIFEST));
     }
 
     /** Fails like {@link #checkManifestPresent()}, or if the predicate rejects the manifest. */
@@ -112,7 +113,7 @@ public final class WithManifest {
                     + e.getClass().getSimpleName() + ": " + e.getMessage() + ")");
         }
         return accepted
-                ? CheckResults.passed(CheckResults.MANIFEST)
+                ? CheckResults.passed(CheckCategory.MANIFEST)
                 : CheckResults.manifestCheckFailed(errorMessage);
     }
 
@@ -120,11 +121,11 @@ public final class WithManifest {
     private CheckResult checkSbomMatchesManifest() {
         Optional<Bom> bom = context.bom().get();
         if (bom.isEmpty()) {
-            return CheckResults.unavailable(CheckResults.SBOM_VS_MANIFEST, "the SBOM");
+            return CheckResults.unavailable(CheckCategory.SBOM_VS_MANIFEST, "the SBOM");
         }
         Optional<ChannelManifest> manifest = context.manifest().get();
         if (manifest.isEmpty()) {
-            return CheckResults.unavailable(CheckResults.SBOM_VS_MANIFEST, "the manifest");
+            return CheckResults.unavailable(CheckCategory.SBOM_VS_MANIFEST, "the manifest");
         }
         List<String> issues = new ArrayList<>();
         for (Component c : ComponentUtils.collectMavenComponents(bom.get().getComponents())) {

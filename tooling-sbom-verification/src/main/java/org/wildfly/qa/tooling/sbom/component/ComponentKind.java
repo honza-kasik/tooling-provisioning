@@ -12,6 +12,11 @@ public enum ComponentKind {
     POM_DERIVED,
     /** Installed as a native {@code .so}/{@code .dll} inside a module {@code lib/} directory. */
     NATIVE_LIB,
-    /** A regular JAR installed on disk. */
-    REGULAR_JAR
+    /**
+     * A Maven artifact that is not a JAR ({@code type=} other than {@code jar} in the purl), installed as a
+     * plain file, for example the {@code version.txt} of the feature pack ({@code type=txt}).
+     */
+    OTHER_FILE,
+    /** A JAR installed on disk. */
+    JAR
 }

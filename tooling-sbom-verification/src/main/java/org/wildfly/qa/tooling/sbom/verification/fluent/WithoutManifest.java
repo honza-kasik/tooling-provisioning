@@ -4,6 +4,7 @@
  */
 package org.wildfly.qa.tooling.sbom.verification.fluent;
 
+import org.wildfly.qa.tooling.sbom.result.CheckCategory;
 import org.wildfly.qa.tooling.sbom.result.CheckResult;
 import org.wildfly.qa.tooling.sbom.verification.Context;
 import org.wildfly.qa.tooling.sbom.result.CheckResults;
@@ -54,6 +55,6 @@ public final class WithoutManifest {
         Path file = context.root().resolve(".installation").resolve("manifest.yaml");
         return Files.exists(file)
                 ? CheckResults.manifestUnexpected(file)
-                : CheckResults.passed(CheckResults.MANIFEST);
+                : CheckResults.passed(CheckCategory.MANIFEST);
     }
 }
