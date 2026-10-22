@@ -79,8 +79,8 @@ public final class WithDiskChecks {
     /**
      * Replaces {@link #DEFAULT_FAT_JAR_NAMES}: the Maven artifacts that are installed under a fixed,
      * unversioned filename instead of {@code <artifactId>-<version>.jar}. The SBOM-versus-disk check looks
-     * for such an artifact at the given path, and the disk-versus-SBOM check accepts the file name of that
-     * path as declared. To add to the defaults, copy them into the map you pass.
+     * for such an artifact at the given path, and the disk-versus-SBOM check accepts a JAR at that path as
+     * declared. To add to the defaults, copy them into the map you pass.
      *
      * @param fatJarNames SBOM component {@code name} to path relative to the installation root
      * @return this stage
@@ -148,9 +148,11 @@ public final class WithDiskChecks {
 
     /**
      * Fails for every SBOM component whose JAR, native library directory or other file is not on disk.
-     * A JAR is looked up by its file name in the scan, and every occurrence the SBOM declares for a
-     * component (Maven or {@code pkg:generic}) must exist, so a component with several locations is checked
-     * at all of them.
+     * A JAR is looked up by its file name in the scan (or by its fat JAR name), and in addition every
+     * occurrence the SBOM declares for a component (Maven or {@code pkg:generic}) must exist, so a
+     * component with several locations is checked at all of them. Every component that is installed, that
+     * is everything but the POM-derived (shaded) ones, must declare at least one location: without it the
+     * SBOM does not say where the file is, which is reported instead of passed.
      */
     private CheckResult checkSbomVsDisk() {
         Optional<Bom> bom = context.bom().get();
@@ -172,7 +174,7 @@ public final class WithDiskChecks {
                         missing.add(c.getPurl() + " [native lib dir missing: " + libDir + "]");
                     }
                 });
-                case OTHER_FILE -> checkOccurrences(c, root, null, missing);
+                case OTHER_FILE -> checkByComponentLocation(c, root, null, missing);
                 case JAR -> {
                     String fatJar = fatJarNames.get(c.getName());
                     String expected = fatJar != null ? fatJar : ComponentUtils.expectedJarFileName(c);
@@ -183,14 +185,28 @@ public final class WithDiskChecks {
                         missing.add(c.getPurl() + " [expected: " + expected + "]");
                     }
                     // a JAR that was not found is already reported; do not report its occurrence again
-                    checkOccurrences(c, root, found ? null : Path.of(expected).getFileName().toString(), missing);
+                    checkByComponentLocation(c, root, found ? null : Path.of(expected).getFileName().toString(), missing);
                 }
             }
         }
         for (Component c : ComponentUtils.collectGenericComponents(bom.get().getComponents())) {
-            checkOccurrences(c, root, null, missing);
+            checkByComponentLocation(c, root, null, missing);
         }
         return CheckResults.sbomVsDisk(missing);
+    }
+
+    /**
+     * Checks the component by the locations the SBOM declares for it: it needs at least one, and every one
+     * must exist under the root.
+     *
+     * @param alreadyReported the file name of a location that was reported by another check, or {@code null}
+     */
+    private static void checkByComponentLocation(Component c, Path root, String alreadyReported, List<String> missing) {
+        if (ComponentUtils.occurrenceLocations(c).isEmpty()) {
+            missing.add(c.getPurl() + " [no location declared, so it cannot be looked for]");
+            return;
+        }
+        checkOccurrences(c, root, alreadyReported, missing);
     }
 
     /**
@@ -205,7 +221,13 @@ public final class WithDiskChecks {
                 .forEach(location -> missing.add(c.getPurl() + " [file missing: " + location + "]"));
     }
 
-    /** Fails for every JAR on disk that the SBOM does not declare, once per file name. */
+    /**
+     * Fails for every JAR on disk that the SBOM does not declare, once per path relative to the root. A JAR
+     * is declared when its path is a location of an installed Maven component, the path that
+     * {@link #withFatJarNames(Map)} gives for a component of the SBOM, or the location of a
+     * {@code pkg:generic} component that {@link #withGenericFatJars(Collection)} lists. The file name alone
+     * does not declare it, so a second copy of a declared JAR elsewhere is reported.
+     */
     private CheckResult checkDiskVsSbom() {
         Optional<Bom> optionalBom = context.bom().get();
         if (optionalBom.isEmpty()) {
@@ -217,27 +239,27 @@ public final class WithDiskChecks {
         if (scan.isEmpty()) {
             return CheckResults.unavailable(CheckCategory.DISK_VS_SBOM, "the JAR scan");
         }
-        Set<String> sbomFileNames = mavenComponents.stream()
-                .filter(c -> ComponentUtils.componentKind(c) != ComponentKind.POM_DERIVED)
-                .filter(c -> ComponentUtils.componentKind(c) != ComponentKind.OTHER_FILE)
-                .map(c -> {
-                    String fatJar = fatJarNames.get(c.getName());
-                    return fatJar != null
-                            ? Path.of(fatJar).getFileName().toString()
-                            : ComponentUtils.expectedJarFileName(c);
-                })
-                .collect(Collectors.toSet());
-
+        Set<Path> declared = new HashSet<>();
+        for (Component c : mavenComponents) {
+            if (ComponentUtils.componentKind(c) == ComponentKind.POM_DERIVED) {
+                continue;
+            }
+            ComponentUtils.occurrenceLocations(c).forEach(location -> declared.add(Path.of(location).normalize()));
+            String fatJar = fatJarNames.get(c.getName());
+            if (fatJar != null) {
+                declared.add(Path.of(fatJar).normalize());
+            }
+        }
         Set<Path> declaredGeneric = new HashSet<>(ComponentUtils.genericLocations(bom.getComponents()));
         declaredGeneric.retainAll(genericFatJars);
-        Path root = context.root().toAbsolutePath().normalize();
+        declared.addAll(declaredGeneric);
 
-        Set<String> reported = new HashSet<>();
+        Path root = context.root().toAbsolutePath().normalize();
         List<String> undeclared = scan.get().artifacts().stream()
-                .filter(a -> !sbomFileNames.contains(a.jarFileName()))
-                .filter(a -> !declaredGeneric.contains(root.relativize(Path.of(a.jarPath()).toAbsolutePath().normalize())))
-                .map(InstalledArtifact::jarFileName)
-                .filter(reported::add)
+                .map(a -> root.relativize(Path.of(a.jarPath()).toAbsolutePath().normalize()))
+                .filter(path -> !declared.contains(path))
+                .map(Path::toString)
+                .distinct()
                 .toList();
         return CheckResults.diskVsSbom(undeclared);
     }

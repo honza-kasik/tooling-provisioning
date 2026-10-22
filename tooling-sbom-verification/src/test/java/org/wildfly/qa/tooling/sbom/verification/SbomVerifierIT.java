@@ -159,7 +159,7 @@ class SbomVerifierIT {
             assertEquals(CheckCategory.SBOM, result.category());
             // the first issue is the header with the file and the totals; the others are the error groups
             List<String> unknown = result.issues().stream().skip(1)
-                    .filter(issue -> !issue.contains(".evidence.identity"))
+                    .filter(issue -> !issue.contains("/evidence/identity"))
                     .toList();
             assertTrue(unknown.isEmpty(), "Unexpected schema errors: " + unknown);
         });
@@ -296,8 +296,12 @@ class SbomVerifierIT {
                 .withFatJarNames(Map.of())
                 .verify();
 
-        assertTrue(results.stream().anyMatch(r -> !r.passed() && r.category() == CheckCategory.SBOM_VS_DISK),
-                "Expected the fixed-name JARs to be reported missing: " + results);
+        // the name lookup cannot find jboss-modules.jar and launcher.jar, but they are still on disk at the
+        // location the SBOM declares, so the other direction has nothing to report
+        CheckResult failed = onlyFailure(results);
+        assertEquals(CheckCategory.SBOM_VS_DISK, failed.category());
+        assertFalse(failed.issues().isEmpty(), failed.toString());
+        assertTrue(failed.issues().stream().allMatch(i -> i.contains("[expected: ")), failed.toString());
     }
 
     @ParameterizedTest(name = "{0}")
@@ -359,7 +363,7 @@ class SbomVerifierIT {
 
         CheckResult failed = onlyFailure(results);
         assertEquals(CheckCategory.DISK_VS_SBOM, failed.category());
-        assertEquals(List.of("jboss-client.jar"), failed.issues());
+        assertEquals(List.of("bin/client/jboss-client.jar"), failed.issues());
     }
 
     @Test
@@ -392,7 +396,106 @@ class SbomVerifierIT {
 
         CheckResult failed = onlyFailure(results);
         assertEquals(CheckCategory.DISK_VS_SBOM, failed.category());
-        assertEquals(List.of("jboss-client.jar"), failed.issues());
+        assertEquals(List.of("elsewhere/jboss-client.jar"), failed.issues());
+    }
+
+    /** A Maven component that is installed as {@code lib.jar} instead of {@code lib-1.jar}. */
+    private static Path fixedNameInstallation(Path root, String location) throws IOException {
+        Files.createDirectories(root.resolve("bin"));
+        Files.writeString(root.resolve("bin/lib.jar"), "x");
+        Files.writeString(root.resolve("sbom.cdx.json"), jarSbom(location));
+        return root;
+    }
+
+    @Test
+    void aFatJarNameMakesTheJarAtThatPathBeFoundAndDeclared(@TempDir Path root) throws IOException {
+        fixedNameInstallation(root, "bin/lib.jar");
+
+        assertAllPassed(new SbomVerifier(root, Path.of("sbom.cdx.json"), InstallationScanner.DEFAULT_EXCLUDED)
+                .withSbom().withoutManifest().withDiskChecks()
+                .withFatJarNames(Map.of("lib", "bin/lib.jar"))
+                .verify());
+    }
+
+    @Test
+    void withoutAFatJarNameTheFixedNameJarIsNotFoundByItsVersionedName(@TempDir Path root) throws IOException {
+        fixedNameInstallation(root, "bin/lib.jar");
+
+        List<CheckResult> results = new SbomVerifier(root, Path.of("sbom.cdx.json"),
+                InstallationScanner.DEFAULT_EXCLUDED)
+                .withSbom().withoutManifest().withDiskChecks()
+                .verify();
+
+        assertEquals(List.of("pkg:maven/org.example/lib@1 [expected: lib-1.jar]"),
+                issuesOf(results, CheckCategory.SBOM_VS_DISK));
+        // the SBOM declares bin/lib.jar as a location, which is all the other direction needs
+        assertEquals(List.of(), issuesOf(results, CheckCategory.DISK_VS_SBOM));
+    }
+
+    @Test
+    void aFatJarNameDeclaresOnlyTheJarAtItsPath(@TempDir Path root) throws IOException {
+        fixedNameInstallation(root, "bin/lib.jar");
+        Files.createDirectories(root.resolve("elsewhere"));
+        Files.writeString(root.resolve("elsewhere/lib.jar"), "x");
+
+        List<CheckResult> results = new SbomVerifier(root, Path.of("sbom.cdx.json"),
+                InstallationScanner.DEFAULT_EXCLUDED)
+                .withSbom().withoutManifest().withDiskChecks()
+                .withFatJarNames(Map.of("lib", "bin/lib.jar"))
+                .verify();
+
+        assertEquals(List.of(), issuesOf(results, CheckCategory.SBOM_VS_DISK));
+        assertEquals(List.of("elsewhere/lib.jar"), issuesOf(results, CheckCategory.DISK_VS_SBOM));
+    }
+
+    @Test
+    void twoUndeclaredCopiesOfAJarAreTwoIssues(@TempDir Path root) throws IOException {
+        Files.createDirectories(root.resolve("modules"));
+        Files.createDirectories(root.resolve("one"));
+        Files.createDirectories(root.resolve("two"));
+        Files.writeString(root.resolve("modules/lib-1.jar"), "x");
+        Files.writeString(root.resolve("one/lib-1.jar"), "x");
+        Files.writeString(root.resolve("two/lib-1.jar"), "x");
+        Files.writeString(root.resolve("sbom.cdx.json"), jarSbom("modules/lib-1.jar"));
+
+        List<CheckResult> results = new SbomVerifier(root, Path.of("sbom.cdx.json"),
+                InstallationScanner.DEFAULT_EXCLUDED)
+                .withSbom().withoutManifest().withDiskChecks()
+                .verify();
+
+        assertEquals(Set.of("one/lib-1.jar", "two/lib-1.jar"),
+                Set.copyOf(issuesOf(results, CheckCategory.DISK_VS_SBOM)));
+        assertEquals(2, issuesOf(results, CheckCategory.DISK_VS_SBOM).size());
+    }
+
+    @Test
+    void aJarIsDeclaredByEachOfSeveralLocations(@TempDir Path root) throws IOException {
+        Files.createDirectories(root.resolve("modules"));
+        Files.createDirectories(root.resolve("other"));
+        Files.writeString(root.resolve("modules/lib-1.jar"), "x");
+        Files.writeString(root.resolve("other/lib-1.jar"), "x");
+        Files.writeString(root.resolve("sbom.cdx.json"), jarSbom("modules/lib-1.jar", "other/lib-1.jar"));
+
+        assertAllPassed(new SbomVerifier(root, Path.of("sbom.cdx.json"), InstallationScanner.DEFAULT_EXCLUDED)
+                .withSbom().withoutManifest().withDiskChecks()
+                .verify());
+    }
+
+    @Test
+    void aSecondCopyOfADeclaredMavenJarIsReportedAtItsPath(@TempDir Path root) throws IOException {
+        Files.createDirectories(root.resolve("modules"));
+        Files.createDirectories(root.resolve("elsewhere"));
+        Files.writeString(root.resolve("modules/lib-1.jar"), "x");
+        Files.writeString(root.resolve("elsewhere/lib-1.jar"), "x");
+        Files.writeString(root.resolve("sbom.cdx.json"), jarSbom("modules/lib-1.jar"));
+
+        CheckResult failed = onlyFailure(new SbomVerifier(root, Path.of("sbom.cdx.json"),
+                InstallationScanner.DEFAULT_EXCLUDED)
+                .withSbom().withoutManifest().withDiskChecks()
+                .verify());
+
+        assertEquals(CheckCategory.DISK_VS_SBOM, failed.category());
+        assertEquals(List.of("elsewhere/lib-1.jar"), failed.issues());
     }
 
     // ---- every occurrence of a Maven component -----------------------------------
@@ -430,10 +533,24 @@ class SbomVerifierIT {
     }
 
     @Test
-    void aJarFoundElsewhereThanItsOccurrenceIsReported(@TempDir Path root) throws IOException {
-        CheckResult failed = onlyFailure(verifyJar(root, "other/lib-1.jar"));
+    void aJarFoundElsewhereThanItsOccurrenceIsReportedInBothDirections(@TempDir Path root) throws IOException {
+        List<CheckResult> results = verifyJar(root, "other/lib-1.jar");
 
-        assertEquals(List.of("pkg:maven/org.example/lib@1 [file missing: other/lib-1.jar]"), failed.issues());
+        assertEquals(List.of("pkg:maven/org.example/lib@1 [file missing: other/lib-1.jar]"),
+                issuesOf(results, CheckCategory.SBOM_VS_DISK));
+        assertEquals(List.of("modules/lib-1.jar"), issuesOf(results, CheckCategory.DISK_VS_SBOM));
+    }
+
+    @Test
+    void aMavenJarWithoutALocationIsReportedEvenIfItIsOnDisk(@TempDir Path root) throws IOException {
+        List<CheckResult> results = verifyJar(root);
+
+        List<String> issues = issuesOf(results, CheckCategory.SBOM_VS_DISK);
+        assertEquals(1, issues.size(), results.toString());
+        assertTrue(issues.get(0).startsWith("pkg:maven/org.example/lib@1 [no location declared"),
+                results.toString());
+        // it declares no location, so the JAR on disk is not declared either
+        assertEquals(List.of("modules/lib-1.jar"), issuesOf(results, CheckCategory.DISK_VS_SBOM));
     }
 
     @Test
@@ -447,6 +564,54 @@ class SbomVerifierIT {
                 .verify());
 
         assertEquals(List.of("pkg:maven/org.example/lib@1 [expected: lib-1.jar]"), failed.issues());
+    }
+
+    @Test
+    void aGenericComponentWithoutALocationIsReported(@TempDir Path root) throws IOException {
+        Files.writeString(root.resolve("sbom.cdx.json"), """
+                {"bomFormat":"CycloneDX","specVersion":"1.6","version":1,"components":[
+                  {"type":"library","name":"tool","version":"1","purl":"pkg:generic/tool@1"}]}
+                """);
+
+        CheckResult failed = onlyFailure(new SbomVerifier(root, Path.of("sbom.cdx.json"),
+                InstallationScanner.DEFAULT_EXCLUDED)
+                .withSbom().withoutManifest().withDiskChecks()
+                .verify());
+
+        assertEquals(CheckCategory.SBOM_VS_DISK, failed.category());
+        assertEquals(1, failed.issues().size(), failed.toString());
+        assertTrue(failed.issues().get(0).startsWith("pkg:generic/tool@1 [no location declared"), failed.toString());
+    }
+
+    @Test
+    void aNonJarMavenComponentWithoutALocationIsReported(@TempDir Path root) throws IOException {
+        Files.writeString(root.resolve("sbom.cdx.json"), """
+                {"bomFormat":"CycloneDX","specVersion":"1.6","version":1,"components":[
+                  {"type":"library","group":"g","name":"conf","version":"1",
+                   "purl":"pkg:maven/g/conf@1?classifier=version&type=txt"}]}
+                """);
+
+        CheckResult failed = onlyFailure(new SbomVerifier(root, Path.of("sbom.cdx.json"),
+                InstallationScanner.DEFAULT_EXCLUDED)
+                .withSbom().withoutManifest().withDiskChecks()
+                .verify());
+
+        assertEquals(CheckCategory.SBOM_VS_DISK, failed.category());
+        assertTrue(failed.issues().get(0).contains("[no location declared"), failed.toString());
+    }
+
+    @Test
+    void aPomDerivedComponentWithoutALocationIsNotReported(@TempDir Path root) throws IOException {
+        Files.writeString(root.resolve("sbom.cdx.json"), """
+                {"bomFormat":"CycloneDX","specVersion":"1.6","version":1,"components":[
+                  {"type":"library","group":"g","name":"shaded","version":"1","purl":"pkg:maven/g/shaded@1",
+                   "evidence":{"identity":[{"field":"purl","confidence":1.0,
+                     "methods":[{"technique":"manifest-analysis","value":"maven-pom-analysis"}]}]}}]}
+                """);
+
+        assertAllPassed(new SbomVerifier(root, Path.of("sbom.cdx.json"), InstallationScanner.DEFAULT_EXCLUDED)
+                .withSbom().withoutManifest().withDiskChecks()
+                .verify());
     }
 
     // ---- location of the SBOM ----------------------------------------------------
@@ -546,6 +711,10 @@ class SbomVerifierIT {
     private static void assertCategories(List<CheckResult> results, CheckCategory... expected) {
         assertEquals(Set.of(expected), results.stream().map(CheckResult::category).collect(Collectors.toSet()));
         assertEquals(expected.length, results.size());
+    }
+
+    private static List<String> issuesOf(List<CheckResult> results, CheckCategory category) {
+        return results.stream().filter(r -> r.category() == category).findFirst().orElseThrow().issues();
     }
 
     private static CheckResult onlyFailure(List<CheckResult> results) {

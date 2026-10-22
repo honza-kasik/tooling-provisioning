@@ -22,13 +22,15 @@ import java.util.function.Supplier;
 
 /**
  * Entry point of the fluent verification of an extracted bootable JAR. A bootable JAR has two levels: its
- * own SBOM in {@code META-INF/sbom/}, and the WildFly installation packaged in {@code wildfly.zip}. The
- * outer level is stated first, then the chain continues with a verifier of the extracted installation:
+ * own SBOM, usually in {@code META-INF/sbom/}, and the WildFly installation packaged in
+ * {@code wildfly.zip}. The outer level is stated first, then the chain continues with a verifier of the
+ * extracted installation:
  * <pre>
- *     new BootableJarSbomVerifier(root).withSbom().withBomCheck(...)
+ *     Path outerSbom = Path.of("META-INF/sbom/sbom.cdx.json");
+ *     new BootableJarSbomVerifier(root, outerSbom).withSbom().withBomCheck(...)
  *             .withExtractedWildflyZipSbomVerifier(Path.of("sbom.cdx.json.gz"), InstallationScanner.DEFAULT_EXCLUDED)
  *             .withSbom().withManifest().withDiskChecks().verify();
- *     new BootableJarSbomVerifier(root).withoutSbom().verify();
+ *     new BootableJarSbomVerifier(root, outerSbom).withoutSbom().verify();
  * </pre>
  *
  * <p>Only a bootable JAR with an SBOM can continue to the extracted installation: without one there is
@@ -41,20 +43,25 @@ import java.util.function.Supplier;
  */
 public final class BootableJarSbomVerifier {
 
-    /** The SBOM of a bootable JAR, relative to {@code META-INF/sbom}. */
-    private static final Path OUTER_SBOM_FILE = Path.of("sbom.cdx.json");
-
     private final Context context;
     private final Path wildflyZip;
 
     /**
      * @param bootableRoot the extracted bootable JAR (the directory that contains {@code META-INF/} and
      *                     {@code wildfly.zip})
+     * @param sbomFile     where the SBOM of the bootable JAR is, relative to {@code bootableRoot} (or
+     *                     absolute), for example {@code META-INF/sbom/sbom.cdx.json}. It is gunzipped when
+     *                     its name ends in {@code .gz}. With {@link #withoutSbom()} it is the file that must
+     *                     not exist. This is not the SBOM of {@code wildfly.zip}, which is given to
+     *                     {@code withExtractedWildflyZipSbomVerifier}.
      */
-    public BootableJarSbomVerifier(Path bootableRoot) {
+    public BootableJarSbomVerifier(Path bootableRoot, Path sbomFile) {
         Objects.requireNonNull(bootableRoot, "bootableRoot");
-        // the outer SBOM directory is never scanned for JARs, so nothing is excluded
-        this.context = new Context(bootableRoot.resolve("META-INF").resolve("sbom"), OUTER_SBOM_FILE, List.of());
+        Objects.requireNonNull(sbomFile, "sbomFile");
+        // the outer SBOM directory is never scanned for JARs, so nothing is excluded; the SBOM path is
+        // made absolute here because the context root is META-INF/sbom, not bootableRoot
+        this.context = new Context(bootableRoot.resolve("META-INF").resolve("sbom"),
+                bootableRoot.resolve(sbomFile).toAbsolutePath().normalize(), List.of());
         this.wildflyZip = bootableRoot.resolve("wildfly.zip");
     }
 
