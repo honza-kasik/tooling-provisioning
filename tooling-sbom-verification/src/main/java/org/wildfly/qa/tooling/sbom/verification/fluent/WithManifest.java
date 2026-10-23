@@ -5,10 +5,10 @@
 package org.wildfly.qa.tooling.sbom.verification.fluent;
 
 import org.cyclonedx.model.Bom;
-import org.cyclonedx.model.Component;
 import org.wildfly.channel.ChannelManifest;
+import org.wildfly.qa.tooling.sbom.component.Component;
 import org.wildfly.qa.tooling.sbom.component.ComponentKind;
-import org.wildfly.qa.tooling.sbom.component.ComponentUtils;
+import org.wildfly.qa.tooling.sbom.component.ComponentTree;
 import org.wildfly.qa.tooling.sbom.result.CheckCategory;
 import org.wildfly.qa.tooling.sbom.result.CheckResult;
 import org.wildfly.qa.tooling.sbom.verification.Context;
@@ -128,18 +128,18 @@ public final class WithManifest {
             return CheckResults.unavailable(CheckCategory.SBOM_VS_MANIFEST, "the manifest");
         }
         List<String> issues = new ArrayList<>();
-        for (Component c : ComponentUtils.collectMavenComponents(bom.get().getComponents())) {
-            if (ComponentUtils.componentKind(c) == ComponentKind.POM_DERIVED) {
+        for (Component c : ComponentTree.mavenComponents(bom.get().getComponents())) {
+            if (c.kind() == ComponentKind.POM_DERIVED) {
                 continue;
             }
-            String coordinates = c.getGroup() + ":" + c.getName();
-            Optional<String> manifestVersion = manifest.get().findStreamFor(c.getGroup(), c.getName())
+            String coordinates = c.group() + ":" + c.name();
+            Optional<String> manifestVersion = manifest.get().findStreamFor(c.group(), c.name())
                     .map(org.wildfly.channel.Stream::getVersion);
             if (manifestVersion.isEmpty()) {
-                issues.add("NOT IN MANIFEST " + coordinates + " (sbom: " + c.getVersion() + ")");
-            } else if (!manifestVersion.get().equals(c.getVersion())) {
+                issues.add("NOT IN MANIFEST " + coordinates + " (sbom: " + c.version() + ")");
+            } else if (!manifestVersion.get().equals(c.version())) {
                 issues.add("VERSION MISMATCH " + coordinates
-                        + " sbom=" + c.getVersion() + " manifest=" + manifestVersion.get());
+                        + " sbom=" + c.version() + " manifest=" + manifestVersion.get());
             }
         }
         return CheckResults.sbomVsManifest(issues);

@@ -192,3 +192,7 @@ List<CheckResult> results = new BootableJarSbomVerifier(bootableRoot, Path.of("M
 == Results
 
 `CheckResult` is a record `(CheckCategory category, List<String> issues)` with `passed()`. `CheckCategory` is an enum whose `toString()` is the label shown in reports: `SBOM` (`SBOM`), `MANIFEST` (`Manifest`), `INSTALLED_JARS` (`Installed JARs`), `WILDFLY_ZIP` (`wildfly.zip`), `SBOM_VS_DISK` (`SBOM vs disk`), `DISK_VS_SBOM` (`Disk vs SBOM`), `SBOM_VS_MANIFEST` (`SBOM vs manifest`) and `SHADED` (`Shaded artifacts`). Results are returned in the order the checks ran, so a category can appear more than once (the outer and the inner SBOM of a bootable JAR).
+
+== Maintaining component handling
+
+`component.Component` holds the verification behavior of one component: its kind, occurrence locations, native library directories and expected JAR filename. It wraps the original CycloneDX model, available through `model()`, so metadata is preserved without copying fields. `ComponentTree` handles traversal, selection and parent indexing across components. Keep new behavior with the component or in a class with a specific responsibility, rather than adding a general component utility class. The fluent API's `withBomCheck` callbacks continue to receive the original CycloneDX `Bom` and component models.

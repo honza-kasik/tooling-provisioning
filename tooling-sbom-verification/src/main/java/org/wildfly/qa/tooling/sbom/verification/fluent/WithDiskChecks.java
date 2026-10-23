@@ -5,10 +5,10 @@
 package org.wildfly.qa.tooling.sbom.verification.fluent;
 
 import org.cyclonedx.model.Bom;
-import org.cyclonedx.model.Component;
 import org.wildfly.channel.ChannelManifest;
+import org.wildfly.qa.tooling.sbom.component.Component;
 import org.wildfly.qa.tooling.sbom.component.ComponentKind;
-import org.wildfly.qa.tooling.sbom.component.ComponentUtils;
+import org.wildfly.qa.tooling.sbom.component.ComponentTree;
 import org.wildfly.qa.tooling.sbom.result.CheckCategory;
 import org.wildfly.qa.tooling.sbom.result.CheckResult;
 import org.wildfly.qa.tooling.sbom.verification.Context;
@@ -159,7 +159,7 @@ public final class WithDiskChecks {
         if (bom.isEmpty()) {
             return CheckResults.unavailable(CheckCategory.SBOM_VS_DISK, "the SBOM");
         }
-        List<Component> mavenComponents = ComponentUtils.collectMavenComponents(bom.get().getComponents());
+        List<Component> mavenComponents = ComponentTree.mavenComponents(bom.get().getComponents());
         Optional<Set<String>> diskFileNames = diskFileNames();
         if (diskFileNames.isEmpty()) {
             return CheckResults.unavailable(CheckCategory.SBOM_VS_DISK, "the JAR scan");
@@ -167,29 +167,29 @@ public final class WithDiskChecks {
         Path root = context.root();
         List<String> missing = new ArrayList<>();
         for (Component c : mavenComponents) {
-            switch (ComponentUtils.componentKind(c)) {
+            switch (c.kind()) {
                 case POM_DERIVED -> { /* nothing on disk to check */ }
-                case NATIVE_LIB -> ComponentUtils.nativeLibDirs(c).forEach(libDir -> {
+                case NATIVE_LIB -> c.nativeLibDirs().forEach(libDir -> {
                     if (!Files.isDirectory(root.resolve(libDir))) {
-                        missing.add(c.getPurl() + " [native lib dir missing: " + libDir + "]");
+                        missing.add(c.purl() + " [native lib dir missing: " + libDir + "]");
                     }
                 });
                 case OTHER_FILE -> checkByComponentLocation(c, root, null, missing);
                 case JAR -> {
-                    String fatJar = fatJarNames.get(c.getName());
-                    String expected = fatJar != null ? fatJar : ComponentUtils.expectedJarFileName(c);
+                    String fatJar = fatJarNames.get(c.name());
+                    String expected = fatJar != null ? fatJar : c.expectedJarFileName();
                     boolean found = fatJar != null
                             ? Files.exists(root.resolve(fatJar))
                             : diskFileNames.get().contains(expected);
                     if (!found) {
-                        missing.add(c.getPurl() + " [expected: " + expected + "]");
+                        missing.add(c.purl() + " [expected: " + expected + "]");
                     }
                     // a JAR that was not found is already reported; do not report its occurrence again
                     checkByComponentLocation(c, root, found ? null : Path.of(expected).getFileName().toString(), missing);
                 }
             }
         }
-        for (Component c : ComponentUtils.collectGenericComponents(bom.get().getComponents())) {
+        for (Component c : ComponentTree.genericComponents(bom.get().getComponents())) {
             checkByComponentLocation(c, root, null, missing);
         }
         return CheckResults.sbomVsDisk(missing);
@@ -202,8 +202,8 @@ public final class WithDiskChecks {
      * @param alreadyReported the file name of a location that was reported by another check, or {@code null}
      */
     private static void checkByComponentLocation(Component c, Path root, String alreadyReported, List<String> missing) {
-        if (ComponentUtils.occurrenceLocations(c).isEmpty()) {
-            missing.add(c.getPurl() + " [no location declared, so it cannot be looked for]");
+        if (c.occurrenceLocations().isEmpty()) {
+            missing.add(c.purl() + " [no location declared, so it cannot be looked for]");
             return;
         }
         checkOccurrences(c, root, alreadyReported, missing);
@@ -215,10 +215,10 @@ public final class WithDiskChecks {
      * @param alreadyReported the file name of a location that was reported by another check, or {@code null}
      */
     private static void checkOccurrences(Component c, Path root, String alreadyReported, List<String> missing) {
-        ComponentUtils.occurrenceLocations(c).stream().distinct()
+        c.occurrenceLocations().stream().distinct()
                 .filter(location -> !Path.of(location).getFileName().toString().equals(alreadyReported))
                 .filter(location -> !Files.exists(root.resolve(location)))
-                .forEach(location -> missing.add(c.getPurl() + " [file missing: " + location + "]"));
+                .forEach(location -> missing.add(c.purl() + " [file missing: " + location + "]"));
     }
 
     /**
@@ -234,23 +234,23 @@ public final class WithDiskChecks {
             return CheckResults.unavailable(CheckCategory.DISK_VS_SBOM, "the SBOM");
         }
         Bom bom = optionalBom.get();
-        List<Component> mavenComponents = ComponentUtils.collectMavenComponents(bom.getComponents());
+        List<Component> mavenComponents = ComponentTree.mavenComponents(bom.getComponents());
         Optional<Context.Scan> scan = context.scan().get();
         if (scan.isEmpty()) {
             return CheckResults.unavailable(CheckCategory.DISK_VS_SBOM, "the JAR scan");
         }
         Set<Path> declared = new HashSet<>();
         for (Component c : mavenComponents) {
-            if (ComponentUtils.componentKind(c) == ComponentKind.POM_DERIVED) {
+            if (c.kind() == ComponentKind.POM_DERIVED) {
                 continue;
             }
-            ComponentUtils.occurrenceLocations(c).forEach(location -> declared.add(Path.of(location).normalize()));
-            String fatJar = fatJarNames.get(c.getName());
+            c.occurrenceLocations().forEach(location -> declared.add(Path.of(location).normalize()));
+            String fatJar = fatJarNames.get(c.name());
             if (fatJar != null) {
                 declared.add(Path.of(fatJar).normalize());
             }
         }
-        Set<Path> declaredGeneric = new HashSet<>(ComponentUtils.genericLocations(bom.getComponents()));
+        Set<Path> declaredGeneric = new HashSet<>(ComponentTree.genericLocations(bom.getComponents()));
         declaredGeneric.retainAll(genericFatJars);
         declared.addAll(declaredGeneric);
 
@@ -296,22 +296,22 @@ public final class WithDiskChecks {
 
     /** The POM-derived components that no JAR on disk and no manifest stream accounts for, by parent purl. */
     private ShadedResult collectShaded(Bom bom, Set<String> diskFileNames, ChannelManifest manifest) {
-        Map<String, String> parentIndex = ComponentUtils.parentIndex(bom.getComponents());
+        Map<String, String> parentIndex = ComponentTree.parentIndex(bom.getComponents());
         Map<String, List<String>> grouped = new TreeMap<>();
-        ComponentUtils.collectMavenComponents(bom.getComponents()).stream()
-                .filter(c -> ComponentUtils.componentKind(c) == ComponentKind.POM_DERIVED)
-                .filter(c -> !diskFileNames.contains(ComponentUtils.expectedJarFileName(c)))
+        ComponentTree.mavenComponents(bom.getComponents()).stream()
+                .filter(c -> c.kind() == ComponentKind.POM_DERIVED)
+                .filter(c -> !diskFileNames.contains(c.expectedJarFileName()))
                 .filter(c -> {
-                    String fatJar = fatJarNames.get(c.getName());
+                    String fatJar = fatJarNames.get(c.name());
                     return fatJar == null || !diskFileNames.contains(Path.of(fatJar).getFileName().toString());
                 })
-                .filter(c -> manifest.findStreamFor(c.getGroup(), c.getName())
+                .filter(c -> manifest.findStreamFor(c.group(), c.name())
                         .map(org.wildfly.channel.Stream::getVersion)
-                        .map(v -> !v.equals(c.getVersion()))
+                        .map(v -> !v.equals(c.version()))
                         .orElse(true))
                 .forEach(c -> grouped
-                        .computeIfAbsent(parentIndex.getOrDefault(c.getPurl(), "(no parent)"), k -> new ArrayList<>())
-                        .add(c.getPurl()));
+                        .computeIfAbsent(parentIndex.getOrDefault(c.purl(), "(no parent)"), k -> new ArrayList<>())
+                        .add(c.purl()));
         grouped.values().forEach(Collections::sort);
         return new ShadedResult(Collections.unmodifiableMap(grouped));
     }
