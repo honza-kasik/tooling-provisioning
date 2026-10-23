@@ -25,6 +25,18 @@ An existing installation can be selected with `-Dwildfly.home=/path/to/wildfly`.
 The profile still downloads and unpacks the pinned distribution when this path
 is supplied.
 
+## Java style
+
+Use explicit types for local variable declarations in production code and tests.
+Do not use `var`.
+
+## Test documentation
+
+Document every new or modified test method with a short Javadoc description of
+the scenario being tested and explicit passing criteria. State the expected
+observable result, including relevant error cases. Apply this to both unit and
+integration tests; a descriptive method name alone is not sufficient.
+
 ## Releasing
 
 Artifacts are published to JBoss Nexus at `repository.jboss.org`. Releases are signed with GPG.
