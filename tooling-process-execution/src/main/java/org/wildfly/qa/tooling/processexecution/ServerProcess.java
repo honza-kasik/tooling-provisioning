@@ -124,7 +124,9 @@ public class ServerProcess {
     }
 
     /**
-     * Start a server and run a runnable after the deployment was deployed and client connected.
+     * Start a server and run a runnable after the client connects. The launched process and its children
+     * are destroyed after the runnable completes, including when it throws. The runnable does not need to
+     * shut down the server itself.
      *
      * @param runnable a runnable which should be run when server started. Server will be destroyed after runnable
      *                 completed.
@@ -148,6 +150,7 @@ public class ServerProcess {
                         throw new ServerRunnableExecutionException(e);
                     } finally {
                         process.toHandle().children().forEach(ProcessHandle::destroy);
+                        process.destroy();
                     }
                 }
         );

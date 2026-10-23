@@ -1,5 +1,6 @@
 package org.wildfly.qa.tooling.processexecution;
 
+import org.apache.commons.exec.CommandLine;
 import org.wildfly.extras.creaper.core.online.operations.Address;
 import org.wildfly.extras.creaper.core.online.operations.Operations;
 import org.wildfly.extras.creaper.core.online.operations.admin.Administration;
@@ -91,6 +92,8 @@ class ServerProcessIT {
     /**
      * Verify that {@link ServerProcess#runWhenClientConnectsAndDestroyProcess} invokes the callback once the
      * management client connects.
+     *
+     * <p>Passes when the callback executes and the helper terminates the server without a management shutdown.</p>
      */
     @Test
     void runWhenClientConnects_callbackExecutes() throws IOException, InterruptedException {
@@ -102,7 +105,6 @@ class ServerProcessIT {
         serverProcess.runWhenClientConnectsAndDestroyProcess(client -> {
             assertNotNull(client);
             executed.set(true);
-            new Administration(client).shutdown();
         });
 
         assertTrue(executed.get(), "Callback should have been invoked after client connected");
@@ -132,6 +134,8 @@ class ServerProcessIT {
     /**
      * Verify that a management operation can be executed inside the {@code runWhenClientConnectsAndDestroyProcess}
      * callback and the result is visible to the caller.
+     *
+     * <p>Passes when the operation reads the running state and the helper terminates the server after the callback.</p>
      */
     @Test
     void runWhenClientConnects_managementOperationWorks() throws Exception {
@@ -143,9 +147,60 @@ class ServerProcessIT {
         serverProcess.runWhenClientConnectsAndDestroyProcess(client -> {
             Operations ops = new Operations(client);
             serverState.set(ops.readAttribute(Address.root(), "server-state").stringValue());
-            new Administration(client).shutdown();
         });
 
         assertEquals("running", serverState.get(), "Server should have reported 'running' state");
+    }
+
+    /**
+     * Exercises the CI failure scenario: read the server state and explicitly shut down through management.
+     *
+     * <p>Passes when the state is running, the shutdown call returns and the helper completes without timing out.</p>
+     */
+    @Test
+    void runWhenClientConnects_managementOperationAndExplicitShutdownWork() throws Exception {
+        ServerProcess serverProcess = new ServerProcess(
+                new ShCommandLine(standaloneScript), TIMEOUT, TIMEOUT_UNIT);
+        AtomicReference<String> serverState = new AtomicReference<>();
+        AtomicBoolean shutdownReturned = new AtomicBoolean(false);
+
+        serverProcess.runWhenClientConnectsAndDestroyProcess(client -> {
+            Operations operations = new Operations(client);
+            serverState.set(operations.readAttribute(Address.root(), "server-state").stringValue());
+            new Administration(client).shutdown();
+            shutdownReturned.set(true);
+        });
+
+        assertEquals("running", serverState.get(), "Server should have reported 'running' state");
+        assertTrue(shutdownReturned.get(), "The management shutdown should have returned");
+    }
+
+    /**
+     * Runs a management callback against a directly launched JVM, with no shell child to terminate.
+     *
+     * <p>Passes when the callback reads the running state and the process is destroyed after it returns,
+     * without requiring the callback to shut down the server.</p>
+     */
+    @Test
+    void runWhenClientConnects_destroysDirectJvmAfterCallback() throws Exception {
+        Path home = standaloneScript.getParent().getParent();
+        CommandLine command = new CommandLine(Paths.get(System.getProperty("java.home"), "bin", "java").toFile())
+                .addArgument("-Djboss.home.dir=" + home, false)
+                .addArgument("-Dorg.jboss.boot.log.file=" + home.resolve("standalone/log/server.log"), false)
+                .addArgument("-Dlogging.configuration=" + home.resolve("standalone/configuration/logging.properties").toUri(), false)
+                .addArgument("-jar")
+                .addArgument(home.resolve("jboss-modules.jar").toString(), false)
+                .addArgument("-mp")
+                .addArgument(home.resolve("modules").toString(), false)
+                .addArgument("org.jboss.as.standalone");
+        ServerProcess serverProcess = new ServerProcess(command, TIMEOUT, TIMEOUT_UNIT);
+        AtomicReference<String> serverState = new AtomicReference<>();
+
+        serverProcess.runWhenClientConnectsAndDestroyProcess(client -> {
+            Operations operations = new Operations(client);
+            serverState.set(operations.readAttribute(Address.root(), "server-state").stringValue());
+        });
+
+        assertEquals("running", serverState.get());
     }
 }
