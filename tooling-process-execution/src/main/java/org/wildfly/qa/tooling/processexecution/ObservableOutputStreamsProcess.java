@@ -78,13 +78,21 @@ public class ObservableOutputStreamsProcess {
         final Process process = CommandLauncherFactory.createVMLauncher()
                 .exec(this.commandLine, this.environment, workDir);
 
-        Future<?> stdoutFuture = this.executor.submit(() -> observeStream(process.getInputStream(), line -> {
-            this.standardOutputObservers.forEach(observer -> observer.observe(line));
-            this.interactiveOutputObservers.forEach(observer ->
-                    observer.observeInteractively(line, process.getOutputStream()));
-            this.processControlObservers.forEach(observer ->
-                    observer.observeWithProcessControl(line, process));
-        }));
+        Future<?> stdoutFuture = this.executor.submit(() -> {
+            try {
+                observeStream(process.getInputStream(), line -> {
+                    this.standardOutputObservers.forEach(observer -> observer.observe(line));
+                    this.interactiveOutputObservers.forEach(observer ->
+                            observer.observeInteractively(line, process.getOutputStream()));
+                    this.processControlObservers.forEach(observer ->
+                            observer.observeWithProcessControl(line, process));
+                });
+            } catch (RuntimeException | Error e) {
+                // Keep draining while the process shuts down, even if its callback failed.
+                observeStream(process.getInputStream(), line -> {});
+                throw e;
+            }
+        });
 
         this.executor.execute(() ->
                 observeStream(process.getErrorStream(), line ->

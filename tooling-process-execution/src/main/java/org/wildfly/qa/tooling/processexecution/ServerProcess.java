@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Scanner;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -113,8 +114,7 @@ public class ServerProcess {
                         } catch (IOException | OperationException | InterruptedException e) {
                             throw new ServerRunnableExecutionException(e);
                         } finally {
-                            process.toHandle().children().forEach(ProcessHandle::destroy);
-                            process.destroy();
+                            destroyProcess(process.toHandle());
                         }
                     }
                 })
@@ -149,8 +149,7 @@ public class ServerProcess {
                     } catch (IOException | OperationException | InterruptedException e) {
                         throw new ServerRunnableExecutionException(e);
                     } finally {
-                        process.toHandle().children().forEach(ProcessHandle::destroy);
-                        process.destroy();
+                        destroyProcess(process.toHandle());
                     }
                 }
         );
@@ -181,6 +180,17 @@ public class ServerProcess {
             //streams likely ended by now - lets shutdown the executor
             executor.shutdown();
         }
+    }
+
+    /** Requests shutdown without blocking output readers; each parent stops after its children have exited. */
+    private static CompletableFuture<ProcessHandle> destroyProcess(ProcessHandle process) {
+        CompletableFuture<?>[] children = process.children()
+                .map(ServerProcess::destroyProcess)
+                .toArray(CompletableFuture<?>[]::new);
+        return CompletableFuture.allOf(children).thenCompose(ignored -> {
+            process.destroy();
+            return process.onExit();
+        });
     }
 
     private void observeStream(final InputStream inputStream) {

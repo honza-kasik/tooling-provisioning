@@ -8,14 +8,20 @@ import org.wildfly.extras.creaper.core.online.operations.admin.Administration;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -53,6 +59,8 @@ class ServerProcessIT {
     /**
      * Verify that {@link ServerProcess#runAfterServerStartedAndDestroyProcess} invokes the callback after the server
      * logs "started in".
+     *
+     * <p>Passes when the callback executes and the launcher and server JVM have exited before the helper returns.</p>
      */
     @Test
     void runAfterServerStarted_callbackExecutes() throws IOException, InterruptedException {
@@ -60,13 +68,62 @@ class ServerProcessIT {
                 new ShCommandLine(standaloneScript), TIMEOUT, TIMEOUT_UNIT);
 
         AtomicBoolean executed = new AtomicBoolean(false);
+        List<ProcessHandle> processes = new ArrayList<>();
 
         serverProcess.runAfterServerStartedAndDestroyProcess(client -> {
+            processes.addAll(ProcessHandle.current().descendants().collect(Collectors.toList()));
             assertNotNull(client);
             executed.set(true);
         });
 
         assertTrue(executed.get(), "Callback should have been invoked after server started");
+        assertProcessesStopped(processes);
+    }
+
+    /**
+     * Runs the log-triggered callback through a launcher that writes more than a pipe buffer during shutdown.
+     * Passes when output keeps draining and every launched process exits before the helper returns.
+     */
+    @Test
+    void runAfterServerStarted_drainsShutdownOutput() throws Exception {
+        assertNoisyLauncherStops(false);
+    }
+
+    /**
+     * Throws from a log-triggered callback while shutdown still needs to drain output.
+     * Passes when the original callback exception is reported and all launched processes have exited.
+     */
+    @Test
+    void runAfterServerStarted_callbackFailureStillDrainsShutdownOutput() throws Exception {
+        assertNoisyLauncherStops(true);
+    }
+
+    private static void assertNoisyLauncherStops(boolean failCallback) throws Exception {
+        CommandLine command = new CommandLine(Paths.get(System.getProperty("java.home"), "bin", "java").toFile())
+                .addArgument("-cp").addArgument(System.getProperty("java.class.path"), false)
+                .addArgument(NoisyLauncher.class.getName())
+                .addArgument(standaloneScript.toString(), false);
+        ServerProcess serverProcess = new ServerProcess(command, TIMEOUT, TIMEOUT_UNIT);
+        List<ProcessHandle> processes = new ArrayList<>();
+        ServerProcess.ServerRunnable callback = client -> {
+            processes.addAll(ProcessHandle.current().descendants().collect(Collectors.toList()));
+            if (failCallback) {
+                throw new IOException("callback failed");
+            }
+        };
+        try {
+            if (failCallback) {
+                ServerRunnableExecutionException failure = assertThrows(ServerRunnableExecutionException.class,
+                        () -> serverProcess.runAfterServerStartedAndDestroyProcess(callback));
+                assertInstanceOf(IOException.class, failure.getCause());
+                assertEquals("callback failed", failure.getCause().getMessage());
+            } else {
+                serverProcess.runAfterServerStartedAndDestroyProcess(callback);
+            }
+            assertProcessesStopped(processes);
+        } finally {
+            processes.stream().filter(ProcessHandle::isAlive).forEach(ProcessHandle::destroyForcibly);
+        }
     }
 
     /**
@@ -202,5 +259,42 @@ class ServerProcessIT {
         });
 
         assertEquals("running", serverState.get());
+    }
+
+    private static void assertProcessesStopped(List<ProcessHandle> processes) {
+        assertFalse(processes.isEmpty(), "The callback should observe the running server process");
+        for (ProcessHandle process : processes) {
+            assertFalse(process.isAlive(), "Server process is still alive after cleanup: " + process.pid());
+        }
+    }
+
+    /** Launches WildFly alongside a slowly stopping child, and writes a full pipe of output during shutdown. */
+    public static class NoisyLauncher {
+
+        public static void main(String[] args) throws Exception {
+            if (args.length == 0) {
+                Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                }));
+                System.out.println("READY");
+                Thread.sleep(Long.MAX_VALUE);
+            } else {
+                Runtime.getRuntime().addShutdownHook(new Thread(() -> System.out.println("x".repeat(256 * 1024))));
+                Process child = new ProcessBuilder(Paths.get(System.getProperty("java.home"), "bin", "java").toString(),
+                        "-cp", System.getProperty("java.class.path"), NoisyLauncher.class.getName())
+                        .redirectError(ProcessBuilder.Redirect.INHERIT).start();
+                BufferedReader readiness = new BufferedReader(new InputStreamReader(child.getInputStream()));
+                if (!"READY".equals(readiness.readLine())) {
+                    throw new IOException("Child failed to start");
+                }
+                Process server = new ProcessBuilder("sh", args[0]).inheritIO().start();
+                server.waitFor();
+                child.waitFor();
+            }
+        }
     }
 }
