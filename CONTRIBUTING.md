@@ -1,5 +1,30 @@
 # Contributing to tooling-provisioning
 
+## Testing
+
+`mvn verify` runs the unit tests. Run `mvn verify -Pintegration-tests` to also
+exercise process execution and SBOM verification against a WildFly distribution
+downloaded from Maven Central.
+
+These tests verify the tooling code, using a fixed community WildFly installation
+as a fixture. Testing WildFly itself, including early testing and coverage of its
+Preview and EE flavors, is outside this project's scope. One community distribution
+is sufficient to exercise the tooling's behavior.
+
+The parent POM owns the shared integration-test setup and pins one
+`version.wildfly.test` for all modules.
+The pinned version must include SBOMs (currently `42.0.0.Beta1`, the existing SBOM
+test fixture). To change the fixture for every module in one run, use
+`mvn verify -Pintegration-tests -Dversion.wildfly.test=<version>`.
+
+To run just one module, add `-pl tooling-process-execution` or
+`-pl tooling-sbom-verification`. Both modules use the community WildFly
+distribution, unpacked under each module's `target/wildfly/` directory.
+
+An existing installation can be selected with `-Dwildfly.home=/path/to/wildfly`.
+The profile still downloads and unpacks the pinned distribution when this path
+is supplied.
+
 ## Releasing
 
 Artifacts are published to JBoss Nexus at `repository.jboss.org`. Releases are signed with GPG.

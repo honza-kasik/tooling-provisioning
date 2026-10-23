@@ -52,8 +52,8 @@
         <version.surefire>3.5.2</version.surefire>
         <version.junit>5.11.4</version.junit>
         <version.org.jboss.galleon>5.2.0.Final</version.org.jboss.galleon>
-        <!-- Community WildFly version used for integration tests (e.g. ServerProcess IT) -->
-        <version.wildfly.test>41.0.1.Final</version.wildfly.test>
+        <!-- Fixed WildFly fixture for all integration tests; must include SBOM support. -->
+        <version.wildfly.test>42.0.0.Beta1</version.wildfly.test>
         <!--
             13.x validates against CycloneDX schema 1.7 and uses the json-schema-validator 2.x line, so
             channel-core must be on a release that uses it too (1.4.x): both share one copy of the validator.
@@ -231,6 +231,62 @@
     </build>
 
     <profiles>
+        <profile>
+            <id>integration-tests</id>
+            <properties>
+                <wildfly.home>${project.build.directory}/wildfly/wildfly-${version.wildfly.test}</wildfly.home>
+            </properties>
+            <build>
+                <!-- Modules opt in by declaring these plugins in their integration-tests profile. -->
+                <pluginManagement>
+                    <plugins>
+                        <plugin>
+                            <groupId>org.apache.maven.plugins</groupId>
+                            <artifactId>maven-dependency-plugin</artifactId>
+                            <executions>
+                                <execution>
+                                    <id>unpack-wildfly</id>
+                                    <phase>pre-integration-test</phase>
+                                    <goals>
+                                        <goal>unpack</goal>
+                                    </goals>
+                                    <configuration>
+                                        <artifactItems>
+                                            <artifactItem>
+                                                <groupId>org.wildfly</groupId>
+                                                <artifactId>wildfly-dist</artifactId>
+                                                <version>${version.wildfly.test}</version>
+                                                <type>zip</type>
+                                                <overWrite>false</overWrite>
+                                                <outputDirectory>${project.build.directory}/wildfly</outputDirectory>
+                                            </artifactItem>
+                                        </artifactItems>
+                                    </configuration>
+                                </execution>
+                            </executions>
+                        </plugin>
+                        <plugin>
+                            <groupId>org.apache.maven.plugins</groupId>
+                            <artifactId>maven-failsafe-plugin</artifactId>
+                            <version>${version.surefire}</version>
+                            <configuration>
+                                <systemPropertyVariables>
+                                    <wildfly.home>${wildfly.home}</wildfly.home>
+                                </systemPropertyVariables>
+                            </configuration>
+                            <executions>
+                                <execution>
+                                    <goals>
+                                        <goal>integration-test</goal>
+                                        <goal>verify</goal>
+                                    </goals>
+                                </execution>
+                            </executions>
+                        </plugin>
+                    </plugins>
+                </pluginManagement>
+            </build>
+        </profile>
         <profile>
             <!--definition of profile attaching sources to a release to include them in the released bits-->
             <id>attach-sources</id>
