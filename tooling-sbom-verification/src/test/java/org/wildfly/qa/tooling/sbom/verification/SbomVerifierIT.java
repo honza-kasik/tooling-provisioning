@@ -6,8 +6,6 @@ package org.wildfly.qa.tooling.sbom.verification;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.wildfly.qa.tooling.sbom.result.CheckCategory;
 import org.wildfly.qa.tooling.sbom.result.CheckResult;
 import org.wildfly.qa.tooling.sbom.result.ShadedResult;
@@ -30,63 +28,37 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * Integration tests for {@link SbomVerifier}, run against each {@link Flavour} of WildFly. The flavours differ
- * in the product name that the SBOM declares; everything else is expected to hold for all of them. The
- * installation of a flavour is the directory given by its system property, which the
- * {@code integration-tests} profile sets to the distribution unpacked from Maven. A flavour whose property is
- * not set is skipped. WildFly builds package the SBOM as {@code sbom.cdx.json.gz}, which is the path the
- * tests pass to the verifier. Run with:
+ * Integration tests for {@link SbomVerifier} against the community WildFly distribution unpacked by the
+ * shared {@code integration-tests} profile. Its installation is given by {@code wildfly.home}.
+ * WildFly builds package the SBOM as {@code sbom.cdx.json.gz}, which is the path the tests pass to the verifier.
+ * Run with:
  * <pre>
  *     mvn verify -pl tooling-sbom-verification -Pintegration-tests
  * </pre>
  *
- * <p>The assertions are independent of the WildFly version: no component or JAR counts are hard-coded. The
- * CPE is not checked, because the SBOMs of the community flavours do not carry
- * {@code metadata.component.cpe}.</p>
+ * <p>No component or JAR counts are hard-coded. The CPE is not checked because the community SBOM does not
+ * carry {@code metadata.component.cpe}.</p>
  */
 class SbomVerifierIT {
 
     /** Where WildFly builds put the (gzipped) SBOM, relative to the installation. */
     private static final Path SBOM_FILE = Path.of("sbom.cdx.json.gz");
 
-    /** A flavour of WildFly: the product name its SBOM declares and where its installation is. */
-    enum Flavour {
-        WILDFLY("WildFly", "wildfly.home"),
-        PREVIEW("WildFly Preview", "wildfly.preview.home"),
-        EE("WildFly EE", "wildfly.ee.home");
-
-        private final String productName;
-        private final String homeProperty;
-
-        Flavour(String productName, String homeProperty) {
-            this.productName = productName;
-            this.homeProperty = homeProperty;
-        }
-
-        /** @return the installation; the test is skipped if the flavour has none configured */
-        Path home() {
-            String home = System.getProperty(homeProperty);
-            assumeTrue(home != null && !home.isBlank(), homeProperty + " system property is not set");
-            Path path = Paths.get(home);
-            assertTrue(path.toFile().isDirectory(), "The home of " + this + " must exist: " + path);
-            return path;
-        }
-
-        @Override
-        public String toString() {
-            return productName;
-        }
+    private static Path home() {
+        String home = System.getProperty("wildfly.home");
+        assertNotNull(home, "wildfly.home system property must be set");
+        Path path = Paths.get(home);
+        assertTrue(Files.isDirectory(path), "WildFly home must exist: " + path);
+        return path;
     }
 
     // ---- the whole chain ----------------------------------------------------
 
-    @ParameterizedTest(name = "{0}")
-    @EnumSource(Flavour.class)
-    void allChecksPass(Flavour flavour) {
-        List<CheckResult> results = verifier(flavour)
+    @Test
+    void allChecksPass() {
+        List<CheckResult> results = verifier()
                 .withSbom()
                 .withManifest()
                 .withSbomMatchingManifest()
@@ -100,10 +72,9 @@ class SbomVerifierIT {
 
     // ---- SBOM ----------------------------------------------------------------
 
-    @ParameterizedTest(name = "{0}")
-    @EnumSource(Flavour.class)
-    void sbomIsValidAndDescribesTheProduct(Flavour flavour) {
-        List<CheckResult> results = verifier(flavour)
+    @Test
+    void sbomIsValidAndDescribesTheProduct() {
+        List<CheckResult> results = verifier()
                 .withSbom()
                 .withBomCheck(bom -> bom.getBomFormat() != null && bom.getSpecVersion() != null,
                         "bomFormat or specVersion is missing")
@@ -115,22 +86,20 @@ class SbomVerifierIT {
         assertAllPassed(results);
     }
 
-    @ParameterizedTest(name = "{0}")
-    @EnumSource(Flavour.class)
-    void sbomNamesTheExpectedProduct(Flavour flavour) {
-        List<CheckResult> results = verifier(flavour)
+    @Test
+    void sbomNamesTheExpectedProduct() {
+        List<CheckResult> results = verifier()
                 .withSbom()
-                .withBomCheck(bom -> flavour.productName.equals(bom.getMetadata().getComponent().getName()),
-                        "metadata.component.name is not " + flavour.productName)
+                .withBomCheck(bom -> "WildFly".equals(bom.getMetadata().getComponent().getName()),
+                        "metadata.component.name is not WildFly")
                 .verify();
 
         assertAllPassed(results);
     }
 
-    @ParameterizedTest(name = "{0}")
-    @EnumSource(Flavour.class)
-    void failedBomCheckIsReportedWithItsMessage(Flavour flavour) {
-        List<CheckResult> results = verifier(flavour)
+    @Test
+    void failedBomCheckIsReportedWithItsMessage() {
+        List<CheckResult> results = verifier()
                 .withSbom()
                 .withBomCheck(bom -> false, "expected failure")
                 .verify();
@@ -145,10 +114,9 @@ class SbomVerifierIT {
      * every {@code methods[]} entry. Until the generator is fixed, that is the only schema error allowed;
      * any other one fails this test. It also passes once the SBOM is fully valid.
      */
-    @ParameterizedTest(name = "{0}")
-    @EnumSource(Flavour.class)
-    void schemaValidationFindsNothingButTheKnownIdentityEvidenceErrors(Flavour flavour) {
-        List<CheckResult> results = verifier(flavour)
+    @Test
+    void schemaValidationFindsNothingButTheKnownIdentityEvidenceErrors() {
+        List<CheckResult> results = verifier()
                 .withSbom()
                 .withSchemaValidation()
                 .verify();
@@ -165,28 +133,25 @@ class SbomVerifierIT {
         });
     }
 
-    @ParameterizedTest(name = "{0}")
-    @EnumSource(Flavour.class)
-    void schemaValidationIsOffUnlessAskedFor(Flavour flavour) {
-        List<CheckResult> results = verifier(flavour).withSbom().verify();
+    @Test
+    void schemaValidationIsOffUnlessAskedFor() {
+        List<CheckResult> results = verifier().withSbom().verify();
 
         assertAllPassed(results);
     }
 
-    @ParameterizedTest(name = "{0}")
-    @EnumSource(Flavour.class)
-    void installationWithSbomFailsWhenNoSbomIsExpected(Flavour flavour) {
-        List<CheckResult> results = verifier(flavour).withoutSbom().verify();
+    @Test
+    void installationWithSbomFailsWhenNoSbomIsExpected() {
+        List<CheckResult> results = verifier().withoutSbom().verify();
 
         assertEquals(CheckCategory.SBOM, onlyFailure(results).category());
     }
 
     // ---- manifest ------------------------------------------------------------
 
-    @ParameterizedTest(name = "{0}")
-    @EnumSource(Flavour.class)
-    void manifestHasStreams(Flavour flavour) {
-        List<CheckResult> results = verifier(flavour)
+    @Test
+    void manifestHasStreams() {
+        List<CheckResult> results = verifier()
                 .withSbom()
                 .withManifest()
                 .withManifestCheck(manifest -> !manifest.getStreams().isEmpty(), "the manifest has no streams")
@@ -195,32 +160,29 @@ class SbomVerifierIT {
         assertAllPassed(results);
     }
 
-    @ParameterizedTest(name = "{0}")
-    @EnumSource(Flavour.class)
-    void installationWithManifestFailsWhenNoManifestIsExpected(Flavour flavour) {
-        List<CheckResult> results = verifier(flavour).withSbom().withoutManifest().verify();
+    @Test
+    void installationWithManifestFailsWhenNoManifestIsExpected() {
+        List<CheckResult> results = verifier().withSbom().withoutManifest().verify();
 
         assertEquals(CheckCategory.MANIFEST, onlyFailure(results).category());
     }
 
     // ---- disk checks and shaded artifacts ----------------------------------------
 
-    @ParameterizedTest(name = "{0}")
-    @EnumSource(Flavour.class)
-    void shadedArtifactsAreNotACheckUnlessAskedFor(Flavour flavour) {
-        List<CheckResult> results = verifier(flavour)
+    @Test
+    void shadedArtifactsAreNotACheckUnlessAskedFor() {
+        List<CheckResult> results = verifier()
                 .withSbom().withManifest().withDiskChecks().verify();
 
         assertFalse(results.stream().anyMatch(r -> CheckCategory.SHADED.equals(r.category())),
                 "No shaded check expected when withShadedCheck is not called: " + results);
     }
 
-    @ParameterizedTest(name = "{0}")
-    @EnumSource(Flavour.class)
-    void shadedCheckReceivesTheUntrackedShadedArtifacts(Flavour flavour) {
+    @Test
+    void shadedCheckReceivesTheUntrackedShadedArtifacts() {
         AtomicReference<ShadedResult> seen = new AtomicReference<>();
 
-        List<CheckResult> results = verifier(flavour)
+        List<CheckResult> results = verifier()
                 .withSbom().withManifest().withDiskChecks()
                 .withShadedCheck(shaded -> {
                     seen.set(shaded);
@@ -234,10 +196,9 @@ class SbomVerifierIT {
         assertEquals(shaded.byParentPurl().values().stream().mapToInt(List::size).sum(), shaded.totalArtifacts());
     }
 
-    @ParameterizedTest(name = "{0}")
-    @EnumSource(Flavour.class)
-    void failedShadedCheckIsReportedWithItsMessage(Flavour flavour) {
-        List<CheckResult> results = verifier(flavour)
+    @Test
+    void failedShadedCheckIsReportedWithItsMessage() {
+        List<CheckResult> results = verifier()
                 .withSbom().withManifest().withDiskChecks()
                 .withShadedCheck(shaded -> false, "expected failure")
                 .verify();
@@ -249,24 +210,22 @@ class SbomVerifierIT {
 
     // ---- excluded scan paths ---------------------------------------------------
 
-    @ParameterizedTest(name = "{0}")
-    @EnumSource(Flavour.class)
-    void excludedScanPathThatDoesNotExistChangesNothing(Flavour flavour) {
+    @Test
+    void excludedScanPathThatDoesNotExistChangesNothing() {
         List<Path> excluded = List.of(InstallationScanner.DEFAULT_EXCLUDED.get(0), Path.of("no/such/dir"));
 
-        List<CheckResult> results = new SbomVerifier(flavour.home(), SBOM_FILE, excluded)
+        List<CheckResult> results = new SbomVerifier(home(), SBOM_FILE, excluded)
                 .withSbom().withManifest().withDiskChecks()
                 .verify();
 
         assertAllPassed(results);
     }
 
-    @ParameterizedTest(name = "{0}")
-    @EnumSource(Flavour.class)
-    void excludingTheModulesDirectoryMakesTheSbomComponentsThereMissing(Flavour flavour) {
+    @Test
+    void excludingTheModulesDirectoryMakesTheSbomComponentsThereMissing() {
         List<Path> excluded = List.of(InstallationScanner.DEFAULT_EXCLUDED.get(0), Path.of("modules"));
 
-        List<CheckResult> results = new SbomVerifier(flavour.home(), SBOM_FILE, excluded)
+        List<CheckResult> results = new SbomVerifier(home(), SBOM_FILE, excluded)
                 .withSbom().withManifest().withDiskChecks()
                 .verify();
 
@@ -276,10 +235,9 @@ class SbomVerifierIT {
 
     // ---- fat JAR names -----------------------------------------------------------
 
-    @ParameterizedTest(name = "{0}")
-    @EnumSource(Flavour.class)
-    void explicitDefaultFatJarNamesChangeNothing(Flavour flavour) {
-        List<CheckResult> results = verifier(flavour)
+    @Test
+    void explicitDefaultFatJarNamesChangeNothing() {
+        List<CheckResult> results = verifier()
                 .withSbom().withManifest().withDiskChecks()
                 .withFatJarNames(WithDiskChecks.DEFAULT_FAT_JAR_NAMES)
                 .withGenericFatJars(WithDiskChecks.DEFAULT_GENERIC_FAT_JARS)
@@ -288,10 +246,9 @@ class SbomVerifierIT {
         assertAllPassed(results);
     }
 
-    @ParameterizedTest(name = "{0}")
-    @EnumSource(Flavour.class)
-    void withoutTheFatJarNamesTheFixedNameJarsAreMissing(Flavour flavour) {
-        List<CheckResult> results = verifier(flavour)
+    @Test
+    void withoutTheFatJarNamesTheFixedNameJarsAreMissing() {
+        List<CheckResult> results = verifier()
                 .withSbom().withManifest().withDiskChecks()
                 .withFatJarNames(Map.of())
                 .verify();
@@ -304,10 +261,9 @@ class SbomVerifierIT {
         assertTrue(failed.issues().stream().allMatch(i -> i.contains("[expected: ")), failed.toString());
     }
 
-    @ParameterizedTest(name = "{0}")
-    @EnumSource(Flavour.class)
-    void withoutTheGenericFatJarsTheAssembledJarsAreUndeclared(Flavour flavour) {
-        List<CheckResult> results = verifier(flavour)
+    @Test
+    void withoutTheGenericFatJarsTheAssembledJarsAreUndeclared() {
+        List<CheckResult> results = verifier()
                 .withSbom().withManifest().withDiskChecks()
                 .withGenericFatJars(Set.of())
                 .verify();
@@ -616,10 +572,9 @@ class SbomVerifierIT {
 
     // ---- location of the SBOM ----------------------------------------------------
 
-    @ParameterizedTest(name = "{0}")
-    @EnumSource(Flavour.class)
-    void aWrongSbomPathIsReportedAsMissing(Flavour flavour) {
-        List<CheckResult> results = new SbomVerifier(flavour.home(), Path.of("sbom.cdx.json"),
+    @Test
+    void aWrongSbomPathIsReportedAsMissing() {
+        List<CheckResult> results = new SbomVerifier(home(), Path.of("sbom.cdx.json"),
                 InstallationScanner.DEFAULT_EXCLUDED)
                 .withSbom()
                 .verify();
@@ -629,25 +584,23 @@ class SbomVerifierIT {
         assertTrue(failed.issues().get(0).contains("sbom.cdx.json"), failed.toString());
     }
 
-    @ParameterizedTest(name = "{0}")
-    @EnumSource(Flavour.class)
-    void anAbsolutePathToAPlainJsonSbomIsUsedAsItIs(Flavour flavour, @TempDir Path tmp) throws IOException {
+    @Test
+    void anAbsolutePathToAPlainJsonSbomIsUsedAsItIs(@TempDir Path tmp) throws IOException {
         Path plain = tmp.resolve("my-sbom.json");
-        try (InputStream in = new GZIPInputStream(Files.newInputStream(flavour.home().resolve(SBOM_FILE)))) {
+        try (InputStream in = new GZIPInputStream(Files.newInputStream(home().resolve(SBOM_FILE)))) {
             Files.copy(in, plain);
         }
 
-        List<CheckResult> results = new SbomVerifier(flavour.home(), plain, InstallationScanner.DEFAULT_EXCLUDED)
+        List<CheckResult> results = new SbomVerifier(home(), plain, InstallationScanner.DEFAULT_EXCLUDED)
                 .withSbom().withManifest().withDiskChecks()
                 .verify();
 
         assertAllPassed(results);
     }
 
-    @ParameterizedTest(name = "{0}")
-    @EnumSource(Flavour.class)
-    void withoutSbomChecksTheGivenPathOnly(Flavour flavour) {
-        List<CheckResult> results = new SbomVerifier(flavour.home(), Path.of("no-such-sbom.json"),
+    @Test
+    void withoutSbomChecksTheGivenPathOnly() {
+        List<CheckResult> results = new SbomVerifier(home(), Path.of("no-such-sbom.json"),
                 InstallationScanner.DEFAULT_EXCLUDED)
                 .withoutSbom()
                 .verify();
@@ -697,9 +650,9 @@ class SbomVerifierIT {
 
     // ---- helpers ---------------------------------------------------------------
 
-    /** A verifier of the flavour's installation that skips only {@code .installation}. */
-    private static SbomVerifier verifier(Flavour flavour) {
-        return new SbomVerifier(flavour.home(), SBOM_FILE, InstallationScanner.DEFAULT_EXCLUDED);
+    /** A verifier of the community installation that skips only {@code .installation}. */
+    private static SbomVerifier verifier() {
+        return new SbomVerifier(home(), SBOM_FILE, InstallationScanner.DEFAULT_EXCLUDED);
     }
 
     private static void assertAllPassed(List<CheckResult> results) {

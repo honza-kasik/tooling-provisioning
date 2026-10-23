@@ -52,45 +52,10 @@
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-dependency-plugin</artifactId>
-                        <executions>
-                            <execution>
-                                <id>unpack-wildfly</id>
-                                <phase>pre-integration-test</phase>
-                                <goals>
-                                    <goal>unpack</goal>
-                                </goals>
-                                <configuration>
-                                    <artifactItems>
-                                        <artifactItem>
-                                            <groupId>org.wildfly</groupId>
-                                            <artifactId>wildfly-dist</artifactId>
-                                            <version>${version.wildfly.test}</version>
-                                            <type>zip</type>
-                                            <overWrite>false</overWrite>
-                                            <outputDirectory>${project.build.directory}</outputDirectory>
-                                        </artifactItem>
-                                    </artifactItems>
-                                </configuration>
-                            </execution>
-                        </executions>
                     </plugin>
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-failsafe-plugin</artifactId>
-                        <version>${version.surefire}</version>
-                        <configuration>
-                            <systemPropertyVariables>
-                                <wildfly.home>${project.build.directory}/wildfly-${version.wildfly.test}</wildfly.home>
-                            </systemPropertyVariables>
-                        </configuration>
-                        <executions>
-                            <execution>
-                                <goals>
-                                    <goal>integration-test</goal>
-                                    <goal>verify</goal>
-                                </goals>
-                            </execution>
-                        </executions>
                     </plugin>
                 </plugins>
             </build>
