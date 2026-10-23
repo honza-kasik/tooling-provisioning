@@ -99,6 +99,10 @@ ChannelManifestInspector channelManifestInspector = new ChannelManifestInspector
 String currentVersion = channelManifestInspector.inspectStreamVersion(CONTENT_GROUP_ID, CONTENT_GROUP_ID);
 ----
 
+=== tooling-sbom-verification
+
+Verifies that the CycloneDX SBOM of a WildFly or EAP installation (or of a bootable JAR) matches what is installed on disk and the installation's channel manifest, through a fluent API with `SbomVerifier` and `BootableJarSbomVerifier` as the only entry points. See link:tooling-sbom-verification/README.adoc[its README].
+
 == How to release
 
 See link:CONTRIBUTING.md[CONTRIBUTING.md] for the full release procedure including prerequisites.

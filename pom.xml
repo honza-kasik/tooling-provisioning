@@ -23,6 +23,7 @@
         <module>tooling-string-utils</module>
         <module>tooling-feature-pack</module>
         <module>tooling-pairwise</module>
+        <module>tooling-sbom-verification</module>
     </modules>
 
     <properties>
@@ -41,7 +42,7 @@
         <version.org.apache.maven.plugins.maven-checkstyle-plugin>3.6.0</version.org.apache.maven.plugins.maven-checkstyle-plugin>
         <version.org.wildfly.checkstyle-config>1.0.8.Final</version.org.wildfly.checkstyle-config>
         <version.maven.invoker>3.2.0</version.maven.invoker>
-        <version.channel.library>1.2.1.Final</version.channel.library>
+        <version.channel.library>1.4.0.Final</version.channel.library>
         <version.slf4j>2.0.16</version.slf4j>
         <version.org.jboss.shrinkwrap.resolver>3.3.1</version.org.jboss.shrinkwrap.resolver>
         <version.org.wildfly.extras.creaper>2.0.3</version.org.wildfly.extras.creaper>
@@ -53,6 +54,11 @@
         <version.org.jboss.galleon>5.2.0.Final</version.org.jboss.galleon>
         <!-- Community WildFly version used for integration tests (e.g. ServerProcess IT) -->
         <version.wildfly.test>41.0.1.Final</version.wildfly.test>
+        <!--
+            13.x validates against CycloneDX schema 1.7 and uses the json-schema-validator 2.x line, so
+            channel-core must be on a release that uses it too (1.4.x): both share one copy of the validator.
+        -->
+        <version.cyclonedx-core-java>13.3.0</version.cyclonedx-core-java>
     </properties>
 
     <dependencyManagement>
@@ -180,6 +186,12 @@
                 <groupId>org.jboss.galleon</groupId>
                 <artifactId>galleon-maven-universe</artifactId>
                 <version>${version.org.jboss.galleon}</version>
+            </dependency>
+            <!-- CycloneDX SBOM parser / model -->
+            <dependency>
+                <groupId>org.cyclonedx</groupId>
+                <artifactId>cyclonedx-core-java</artifactId>
+                <version>${version.cyclonedx-core-java}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
