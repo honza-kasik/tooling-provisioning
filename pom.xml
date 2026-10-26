@@ -4,14 +4,14 @@
 
     <groupId>org.wildfly.qa</groupId>
     <artifactId>tooling-provisioning</artifactId>
-    <version>2.0.1-SNAPSHOT</version>
+    <version>2.1.0</version>
     <packaging>pom</packaging>
 
     <scm>
         <connection>scm:git:git@github.com:jboss-eap-qe/tooling-provisioning.git</connection>
         <url>scm:git:git@github.com:jboss-eap-qe/tooling-provisioning.git</url>
         <developerConnection>scm:git:git@github.com:jboss-eap-qe/tooling-provisioning.git</developerConnection>
-      <tag>HEAD</tag>
+      <tag>v2.1.0</tag>
   </scm>
 
     <modules>
