@@ -36,7 +36,7 @@ import java.util.zip.ZipFile;
  * the data that is expensive to compute, the parsed SBOM, the parsed manifest and the JAR scan. Each is
  * computed at most once, on first use, no matter how many stages or checks need it.
  *
- * <p>The root is either given ({@link #Context(Path)}) or is a temporary directory that a zip is extracted
+ * <p>The root is either given ({@link #Context(Path, Path, Collection)}) or is a temporary directory that a zip is extracted
  * to the first time a check needs the root ({@link #extractedFrom(Path, Path, Collection)}). The extracted directory is
  * deleted when {@link #run(List)} has run the checks, so such a context supports one run only; a later
  * run reports its checks as not checked.</p>
