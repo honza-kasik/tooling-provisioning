@@ -100,6 +100,29 @@ mvn deploy
 
 This publishes to the `jboss-snapshots-repository` configured in `distributionManagement`.
 
+## Design Principles
+
+This is a shared library consumed by multiple testsuites (bootable JAR, WildFly Maven
+plugin, and others). Keep these principles in mind when adding or changing functionality:
+
+- **Configurable over hardcoded.** Do not embed environment-specific values
+  (URLs, paths, server names) as defaults. Accept them as parameters and let the
+  consumer provide defaults in their own configuration.
+- **Product-agnostic.** Do not assume a specific WildFly flavor (EAP, WildFly
+  upstream, XP) or project structure. The library should work for any consumer
+  without flavor-specific logic.
+- **No assumptions about consumer layout.** Consumers have different module
+  structures, resource locations, and CI environments. Provide flexible APIs
+  (e.g. both classpath-relative and absolute path options) rather than forcing a
+  single resolution strategy.
+- **Specific properties, not derived from generic ones.** Properties should
+  carry the exact value the code needs (e.g. `expected-metadata-name=JBoss EAP`,
+  `settings-file=/path/to/settings.xml`) rather than a generic property like
+  `product=wildfly` that the library then interprets to derive multiple
+  behaviors. Deriving from generic properties leads to unexpected behavior —
+  it becomes unclear what all is derived, why, and how a change to the generic
+  property will ripple through the code.
+
 ## System Property Naming Convention
 
 When adding configurable system properties to any module in this project, follow these rules:
