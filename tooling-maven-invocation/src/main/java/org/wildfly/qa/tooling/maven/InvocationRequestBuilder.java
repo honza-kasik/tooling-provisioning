@@ -223,9 +223,12 @@ public class InvocationRequestBuilder {
     }
 
     /**
-     * Set path to user settings.xml relative to resources directory.
-     * @param userSettingsFile path to settings.xml
+     * Set path to user settings.xml relative to the test resources classpath. The path is resolved
+     * via {@link ResourcePathLocator#getResourceAbsolutePath(String)}.
+     * @param userSettingsFile classpath-relative path to settings.xml (e.g. {@code "maven-settings/local-repo.xml"})
      * @return instance of this builder
+     * @see #setUserSettingsFileAbsolutePath(String)
+     * @see #setUserSettingsFileWithReplacements(String, ReplacementPairs)
      */
     public InvocationRequestBuilder setUserSettingsFile(final String userSettingsFile) {
         this.userSettingsFile = ResourcePathLocator.getResourceAbsolutePath(userSettingsFile).toFile();
@@ -233,11 +236,26 @@ public class InvocationRequestBuilder {
     }
 
     /**
-     * Set path to user settings.xml relative to resources directory and edit provided file.
-     * @param userSettingsFile path to settings.xml
+     * Set absolute filesystem path to user settings.xml. Unlike {@link #setUserSettingsFile(String)},
+     * the path is used directly and is not resolved from the classpath.
+     * @param userSettingsFile absolute filesystem path to settings.xml (e.g. {@code "/tmp/maven-settings.xml"})
+     * @return instance of this builder
+     * @see #setUserSettingsFile(String)
+     */
+    public InvocationRequestBuilder setUserSettingsFileAbsolutePath(final String userSettingsFile) {
+        this.userSettingsFile = new File(userSettingsFile);
+        return this;
+    }
+
+    /**
+     * Set path to user settings.xml relative to the test resources classpath and perform placeholder
+     * replacements in the file. The path is resolved via {@link ResourcePathLocator#getResourceAbsolutePath(String)}.
+     * @param userSettingsFile classpath-relative path to settings.xml (e.g. {@code "maven-settings/local-repo.xml"})
      * @param pairs pairs of pattern-replacement to be used in editing provided settings xml. Each found pattern in file
      *              will be replaced by corresponding replacement
      * @return instance of this builder
+     * @see #setUserSettingsFile(String)
+     * @see #setUserSettingsFileAbsolutePath(String)
      */
     public InvocationRequestBuilder setUserSettingsFileWithReplacements(final String userSettingsFile,
                                                                         final ReplacementPairs pairs) {
